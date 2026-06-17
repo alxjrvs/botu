@@ -1,5 +1,4 @@
-# botu — dev tasks (TypeScript on Bun). The legacy bash engine/ + test/*.bats are
-# frozen and removed at M6; these lanes target the TS rewrite and mirror CI.
+# botu — dev tasks (TypeScript on Bun). These lanes mirror CI.
 .PHONY: all check lint fmt typecheck test build build-all
 
 all: check
