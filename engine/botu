@@ -15,7 +15,24 @@
 #   $BOTU_CONFIG env  →  breadcrumb from `botu init`  →  $PWD  →  ~/dotFiles
 set -euo pipefail
 
-ENGINE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# ── Bullet-proof self-resolution ──────────────────────────────────────────────
+# The installed `botu` is reached through a PATH symlink (e.g. ~/.local/bin/botu
+# → …/share/botu/engine/botu, or a brew-managed link). `dirname "$BASH_SOURCE"`
+# would then point at the *link's* dir, where no `engine/` siblings live. So walk
+# the symlink chain to the real file and derive ENGINE_DIR from that — making the
+# launcher work identically run-in-place, copied, or symlinked, with no baked
+# paths. Portable: `readlink -f` is GNU-only (absent on stock macOS), so we loop.
+_resolve_engine_dir() {
+  local src="${BASH_SOURCE[0]}" dir
+  while [[ -L "$src" ]]; do
+    dir="$(cd -P "$(dirname "$src")" && pwd)"
+    src="$(readlink "$src")"
+    [[ "$src" != /* ]] && src="$dir/$src" # relative link → anchor to its dir
+  done
+  cd -P "$(dirname "$src")" && pwd
+}
+ENGINE_DIR="$(_resolve_engine_dir)"
+
 _crumb() { printf '%s/botu/config' "${XDG_STATE_HOME:-$HOME/.local/state}"; }
 
 _resolve_config() {
@@ -97,7 +114,12 @@ case "$cmd" in
     printf '  config: %s\n' "${BOTU_CONFIG:-<none — run: botu init>}"
     printf '  tools:  %s\n' "$(_list_commands)"
     ;;
-  --version | -V) printf 'botu 0.0.0-proto\n' ;;
+  --version | -V)
+    # VERSION ships one level above engine/ (share/botu/VERSION); fall back to a
+    # marker when running from an unexpected layout so --version never errors.
+    v="$(cat "$ENGINE_DIR/../VERSION" 2> /dev/null || true)"
+    printf 'botu %s\n' "${v:-0.0.0-unknown}"
+    ;;
   apply | verify | fix)
     _need_config "$cmd"
     exec "$ENGINE_DIR/run" "$cmd" "$@"
