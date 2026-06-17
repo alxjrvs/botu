@@ -1,25 +1,28 @@
-# botu — dev tasks. Just bash + git; these wrap the three checks CI also runs.
-# Generated files (examples/dotfiles/botuinit.sh — written by `botu init`) are
-# deliberately excluded: their source is the heredoc in engine/botu.
-SHELL_FILES := engine/botu engine/run engine/lib.sh \
-	$(wildcard engine/commands/*) \
-	install.sh \
-	$(wildcard examples/dotfiles/hooks/*.sh)
-
-.PHONY: all check lint fmt fmt-check test
+# botu — dev tasks (TypeScript on Bun). The legacy bash engine/ + test/*.bats are
+# frozen and removed at M6; these lanes target the TS rewrite and mirror CI.
+.PHONY: all check lint fmt typecheck test build build-all
 
 all: check
 
-check: lint fmt-check test ## run every check (CI parity)
+check: lint typecheck test ## CI parity: lint + format-check + typecheck + tests
 
-lint: ## shellcheck every shell file
-	shellcheck -x $(SHELL_FILES)
+lint: ## biome lint + format check
+	bunx biome check .
 
-fmt: ## rewrite shell files to canonical format
-	shfmt -i 2 -ci -sr -w $(SHELL_FILES)
+fmt: ## biome lint + format, applying safe fixes
+	bunx biome check --write .
 
-fmt-check: ## fail if any shell file is not canonically formatted
-	shfmt -i 2 -ci -sr -d $(SHELL_FILES)
+typecheck: ## tsc --noEmit
+	bunx tsc --noEmit
 
-test: ## run the bats suite
-	bats test/
+test: ## bun test
+	bun test
+
+build: ## compile a standalone binary for the host
+	bun build src/index.ts --compile --outfile build/botu
+
+build-all: ## cross-compile the release target matrix
+	@for t in bun-darwin-arm64 bun-darwin-x64 bun-linux-x64; do \
+		echo "compiling $$t"; \
+		bun build src/index.ts --compile --target=$$t --outfile build/botu-$$t; \
+	done

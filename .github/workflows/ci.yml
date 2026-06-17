@@ -1,11 +1,10 @@
 name: ci
 
-# The three checks `make check` runs locally, on every push and PR. Run on both
-# Linux and macOS: the engine targets macOS (osx_default, BSD stat) but must stay
-# lint-clean and pass its OS-agnostic tests on Linux too.
+# The checks `make check` runs locally, on every push and PR. Runs on Linux and
+# macOS: botu targets both, and the compiled binary must boot on each.
 on:
   push:
-    branches: [main]
+    branches: [main, v2/typescript]
   pull_request:
 
 jobs:
@@ -17,26 +16,37 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
 
-      - name: Install tools (Linux)
-        if: runner.os == 'Linux'
+      - name: Lint + format (biome)
+        run: bunx biome check .
+
+      - name: Typecheck (tsc)
+        run: bunx tsc --noEmit
+
+      - name: Test (bun test)
+        run: bun test
+
+      - name: Compile host binary
+        run: bun build src/index.ts --compile --outfile build/botu
+
+      - name: Smoke — binary boots
+        run: ./build/botu --version
+
+  cross-compile:
+    # Bun cross-compiles every target from one host; prove the release matrix builds.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - name: Cross-compile release matrix
         run: |
-          sudo apt-get update
-          sudo apt-get install -y shellcheck bats
-          SHFMT=v3.13.1
-          curl -fsSL -o /usr/local/bin/shfmt \
-            "https://github.com/mvdan/sh/releases/download/${SHFMT}/shfmt_${SHFMT}_linux_amd64"
-          chmod +x /usr/local/bin/shfmt
-
-      - name: Install tools (macOS)
-        if: runner.os == 'macOS'
-        run: brew install shellcheck shfmt bats-core
-
-      - name: Lint (shellcheck)
-        run: make lint
-
-      - name: Format check (shfmt)
-        run: make fmt-check
-
-      - name: Tests (bats)
-        run: make test
+          for t in bun-darwin-arm64 bun-darwin-x64 bun-linux-x64; do
+            bun build src/index.ts --compile --target="$t" --outfile "build/botu-$t"
+          done
