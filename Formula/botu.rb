@@ -8,7 +8,7 @@
 class Botu < Formula
   desc "Installable dotfiles + workspace engine — just bash and git"
   homepage "https://github.com/alxjrvs/botu"
-  url "https://github.com/alxjrvs/botu/archive/refs/tags/v0.1.0.tar.gz"
+  url "https://github.com/alxjrvs/botu/archive/refs/tags/v0.0.1.tar.gz"
   sha256 "0000000000000000000000000000000000000000000000000000000000000000"
   license "MIT"
   head "https://github.com/alxjrvs/botu.git", branch: "main"

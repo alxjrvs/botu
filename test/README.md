@@ -21,5 +21,9 @@ bats test/dsl.bats # one file
 | `commands.bats` | command discovery (engine then config, precedence, +x gate)                 |
 | `code.bats`     | `code` breadcrumb + repo crawl, independent of the dotfiles repo            |
 | `hygiene.bats`  | built-in MCP secret-hygiene policy (`${VAR}` / token literals)              |
+| `on.bats`       | `on <verb> CMD` — verb gating (apply also on fix), tally, `--only`/dry-run  |
+| `uninstall.bats`| `uninstall` removes only botu-owned links/copies, then clears the manifest  |
+| `lock.bats`     | concurrency lock — live pid blocks, dead pid reclaimed, verify/dry-run skip |
+| `orphans.bats`  | orphan reaping + manifest — verify warns, fix/apply reap repo-only links    |
 
 The mode test skips on non-macOS (the engine verifies perms with BSD `stat -Lf`).
