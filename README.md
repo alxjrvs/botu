@@ -1,12 +1,14 @@
-# botu
+# BoomTube
 
-A small, installable **dotfiles + workspace engine** — `apply`/`verify`/`fix`
-your machine from a declarative `botufile.toml`, roll back any change, and open
-portals to your code workspaces. A single self-contained binary, compiled from
-**TypeScript on [Bun](https://bun.com)** — no runtime dependencies on your
-machine.
+**BoomTube** is a small, installable **dotfiles + workspace engine**. Its
+executable, **`botu`**, lets you `apply`/`verify`/`fix` your machine from a
+declarative `botufile.toml`, roll back any change, and open portals to your code
+workspaces. A single self-contained binary, compiled from **TypeScript on
+[Bun](https://bun.com)** — no runtime dependencies on your machine.
 
-Named for Jack Kirby's **Boom Tube** (the Fourth World portal).
+Named for Jack Kirby's **Boom Tube** (the Fourth World portal): BoomTube opens
+portals to your machine's ideal state, and to your code. You drive it with the
+`botu` command.
 
 > Status: **early** — a TypeScript rewrite of the original bash engine, extracted
 > from [`alxjrvs/dotFiles`](https://github.com/alxjrvs/dotFiles). See

@@ -1,11 +1,12 @@
-# CLAUDE.md — botu
+# CLAUDE.md — BoomTube
 
 ## What this is
 
-`botu` is an installable dotfiles + workspace engine — a single self-contained
-binary, compiled from **TypeScript on Bun**, that reconciles a machine from a
-declarative `botufile.toml`. It is a rewrite of the original bash engine (now
-removed); read [`SPEC.md`](SPEC.md) for the design of record.
+**BoomTube** is an installable dotfiles + workspace engine — a single
+self-contained binary (the executable is **`botu`**), compiled from **TypeScript
+on Bun**, that reconciles a machine from a declarative `botufile.toml`. It is a
+rewrite of the original bash engine (now removed); read [`SPEC.md`](SPEC.md) for
+the design of record.
 
 ## North stars
 
