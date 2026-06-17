@@ -1,0 +1,42 @@
+name: ci
+
+# The three checks `make check` runs locally, on every push and PR. Run on both
+# Linux and macOS: the engine targets macOS (osx_default, BSD stat) but must stay
+# lint-clean and pass its OS-agnostic tests on Linux too.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck bats
+          SHFMT=v3.13.1
+          curl -fsSL -o /usr/local/bin/shfmt \
+            "https://github.com/mvdan/sh/releases/download/${SHFMT}/shfmt_${SHFMT}_linux_amd64"
+          chmod +x /usr/local/bin/shfmt
+
+      - name: Install tools (macOS)
+        if: runner.os == 'macOS'
+        run: brew install shellcheck shfmt bats-core
+
+      - name: Lint (shellcheck)
+        run: make lint
+
+      - name: Format check (shfmt)
+        run: make fmt-check
+
+      - name: Tests (bats)
+        run: make test

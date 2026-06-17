@@ -239,6 +239,11 @@ _builtin_hygiene() {
     }
   done < <(cd "$REPO" && git ls-files '*.mcp.json' '*.env' '.env' 2> /dev/null || true)
   [[ "$clean" -eq 1 ]] && _ok "tracked .mcp.json/.env carry references only"
+  # Always succeed: a dirty result is reported via _warn/_fail (which drive the
+  # exit code). Returning the falsy `[[ clean ]]` above would, under `set -e`,
+  # abort `… && _builtin_hygiene` before the verify summary — making a warn-only
+  # finding exit 1 instead of 2 and swallowing the summary line.
+  return 0
 }
 
 # ── Run ───────────────────────────────────────────────────────────────────────

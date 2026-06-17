@@ -44,7 +44,26 @@ templating language — the config *is* the program.
 ## Install
 
 ```sh
+# curl installer — downloads the engine, puts `botu` on PATH (idempotent)
 curl -fsSL https://raw.githubusercontent.com/alxjrvs/botu/main/install.sh | sh
+
+# …or from a checkout
+git clone https://github.com/alxjrvs/botu && ./botu/install.sh
+
+# …or Homebrew (this repo doubles as the tap)
+brew tap alxjrvs/botu https://github.com/alxjrvs/botu
+brew install --HEAD botu
 ```
 
-(installer is part of the build — see SPEC.)
+The installer puts the engine under `~/.local/share/botu` and symlinks
+`~/.local/bin/botu`. Override the prefix with `BOTU_PREFIX`; uninstall with
+`./install.sh --uninstall`. The launcher resolves its own real path, so the
+symlink works through any chain — no baked paths.
+
+## Develop
+
+```sh
+make check   # shellcheck + shfmt + bats (what CI runs)
+make test    # just the bats suite
+make fmt     # rewrite shell files to canonical format
+```
