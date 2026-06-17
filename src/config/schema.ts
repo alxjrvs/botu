@@ -25,6 +25,14 @@ export const HookSchema = v.object({
   with: v.optional(v.record(v.string(), v.string())),
 });
 
+// A macOS default: `defaults write <domain> <key> -<type> <value>` (OS-gated to darwin).
+export const OsxDefaultSchema = v.object({
+  domain: v.string(),
+  key: v.string(),
+  type: v.picklist(["bool", "int", "float", "string"]),
+  value: v.union([v.string(), v.number(), v.boolean()]),
+});
+
 // A section/overlay gate: runs only when every specified constraint matches the
 // host. `os`/`host` auto-match the machine; `profile` requires `--profile <name>`.
 export const WhenSchema = v.object({
@@ -41,6 +49,7 @@ export const SectionSchema = v.object({
   glob: v.optional(v.array(GlobSchema)),
   brewfile: v.optional(v.string()),
   mise: v.optional(v.boolean()),
+  osx_default: v.optional(v.array(OsxDefaultSchema)),
   run: v.optional(v.array(RunSchema)),
   hook: v.optional(v.array(HookSchema)),
 });
@@ -54,5 +63,6 @@ export type Link = v.InferOutput<typeof LinkSchema>;
 export type Glob = v.InferOutput<typeof GlobSchema>;
 export type Run = v.InferOutput<typeof RunSchema>;
 export type Hook = v.InferOutput<typeof HookSchema>;
+export type OsxDefault = v.InferOutput<typeof OsxDefaultSchema>;
 export type Section = v.InferOutput<typeof SectionSchema>;
 export type Botufile = v.InferOutput<typeof BotufileSchema>;

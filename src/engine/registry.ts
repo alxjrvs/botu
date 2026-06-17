@@ -4,6 +4,7 @@
 import type { Section } from "../config/schema.ts";
 import { reconcileCopy, reconcileGlob, reconcileLink } from "./resources/filesystem.ts";
 import { reconcileHook } from "./resources/hook.ts";
+import { reconcileOsxDefault } from "./resources/osx.ts";
 import { reconcileBrewfile, reconcileMise } from "./resources/packages.ts";
 import { reconcileRun } from "./resources/run.ts";
 import type { ReconcileCtx } from "./types.ts";
@@ -14,6 +15,7 @@ export async function reconcileSection(section: Section, ctx: ReconcileCtx): Pro
   for (const e of section.glob ?? []) await reconcileGlob(e, ctx);
   if (section.brewfile) reconcileBrewfile(section.brewfile, ctx);
   if (section.mise) reconcileMise(ctx);
+  for (const e of section.osx_default ?? []) reconcileOsxDefault(e, ctx);
   for (const e of section.run ?? []) reconcileRun(e, ctx);
   for (const e of section.hook ?? []) await reconcileHook(e, ctx);
 }

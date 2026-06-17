@@ -118,6 +118,7 @@ export async function reconcile(verb: Verb, ctx: BotuContext, opts: ReconcileOpt
     journal,
     backupRoot,
     resumeDone,
+    osx: { changed: false },
   };
 
   // Merge overlay files (botufile.<os|host|profile>.toml) onto the base, then gate
@@ -150,6 +151,14 @@ export async function reconcile(verb: Verb, ctx: BotuContext, opts: ReconcileOpt
     await writeManifest(ctx.env, rctx.declared);
   } else if (verb === "uninstall" && !dryRun) {
     await writeManifest(ctx.env, []); // uninstall clears the manifest
+  }
+
+  // Applied macOS defaults don't take effect until the owning apps restart — a
+  // universal consequence of osx_default, so the engine does it (not the config).
+  if (mutating && rctx.osx.changed && pc.os === "darwin") {
+    report.header("macOS finalize");
+    Bun.spawnSync(["killall", "Dock", "Finder", "SystemUIServer"], { stdout: "ignore", stderr: "ignore" });
+    report.ok("restarted Dock/Finder/SystemUIServer (defaults changed)");
   }
 
   return finish();

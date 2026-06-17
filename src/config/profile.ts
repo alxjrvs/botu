@@ -13,7 +13,7 @@ export interface ProfileContext {
   readonly profiles: ReadonlySet<string>;
 }
 
-function detectOs(env: Env): OsKind {
+export function detectOs(env: Env): OsKind {
   if (env.BOTU_OS === "darwin" || env.BOTU_OS === "linux") return env.BOTU_OS;
   if (process.platform === "darwin") return "darwin";
   if (process.platform === "linux") return "linux";

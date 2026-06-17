@@ -19,4 +19,6 @@ export interface ReconcileCtx {
   readonly journal?: Journal;
   readonly backupRoot?: string;
   readonly resumeDone?: ReadonlySet<string>;
+  // Mutable cell: set when any osx_default changed, so apply can restart the UI.
+  readonly osx: { changed: boolean };
 }
