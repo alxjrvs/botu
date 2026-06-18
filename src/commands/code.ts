@@ -113,5 +113,7 @@ const cmuxCommand = buildCommand<{ dryRun?: boolean }, [], BotuContext>({
 
 export const codeRouteMap = buildRouteMap({
   routes: { init: initCommand, claude: claudeCommand, cmux: cmuxCommand },
-  docs: { brief: "Open portals to your code workspaces (claude / cmux)" },
+  // Bare `botu code` is the everyday entrypoint — go straight to the agent farm.
+  defaultCommand: "claude",
+  docs: { brief: "Open portals to your code workspaces (default: claude / cmux)" },
 });
