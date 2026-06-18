@@ -32,6 +32,20 @@ mkdir -p "$BIN"
 echo "botu: downloading ${target} (${ver})…"
 curl -fsSL -o "$BIN/botu" "$url"
 chmod +x "$BIN/botu"
+
+# Bun cross-compiles the macOS binaries on Linux, and the ad-hoc signature it applies
+# there is rejected by Apple Silicon — the kernel SIGKILLs an invalidly-signed binary
+# on first run. Re-sign ad-hoc with the native tool so it runs (real Developer ID
+# signing is a follow-up). No-op on Linux.
+if [ "$os" = "Darwin" ]; then
+  if command -v codesign > /dev/null 2>&1; then
+    codesign --force --sign - "$BIN/botu" > /dev/null 2>&1 ||
+      echo "botu: warning — re-sign failed; if botu is killed, run: codesign --force --sign - $BIN/botu" >&2
+  else
+    echo "botu: note — if botu is killed on first run, install Xcode CLT (xcode-select --install) and re-run" >&2
+  fi
+fi
+
 echo "botu: installed → $BIN/botu"
 
 case ":$PATH:" in
