@@ -22,10 +22,14 @@ jobs:
       - run: bun install --frozen-lockfile
 
       - name: Compile the target matrix
+        # No --bytecode: bytecode compilation can't handle the entrypoint's
+        # top-level await (it requires CommonJS, which forbids TLA) and fails at
+        # parse time. Plain --compile is what CI's cross-compile job proves and
+        # what install.sh ships; bytecode is only a startup optimization.
         run: |
           mkdir -p dist
           for t in bun-darwin-arm64 bun-darwin-x64 bun-linux-x64; do
-            bun build src/index.ts --compile --bytecode --target="$t" --outfile "dist/botu-$t"
+            bun build src/index.ts --compile --target="$t" --outfile "dist/botu-$t"
           done
 
       - name: Checksums
