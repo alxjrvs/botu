@@ -13,6 +13,7 @@ import {
   findRepos,
   materializeAgentsFarm,
   planAgentsFarm,
+  pruneFarmProject,
   resolveCodeDir,
 } from "../engine/code.ts";
 import { cleanEnv, hasCommand } from "../lib/proc.ts";
@@ -76,6 +77,9 @@ const claudeCommand = buildCommand<{ dryRun?: boolean }, [], BotuContext>({
       stdout: "inherit",
       stderr: "inherit",
     }).exited;
+    // `claude agents` registers the farm cwd as a project; drop that ghost entry so
+    // the disposable index never lingers in Claude's project/agent-view list.
+    await pruneFarmProject(this.env, farm);
   },
 });
 
