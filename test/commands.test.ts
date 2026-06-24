@@ -1,11 +1,18 @@
 // M5: code-dir resolution + repo crawl, and discovered user commands.
 import { expect, test } from "bun:test";
-import { mkdir, mkdtemp, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BotuConfigError, linkConfigRepo, resolveConfigDir } from "../src/config/load.ts";
 import type { BotuContext } from "../src/context.ts";
-import { findRepos, materializeAgentsFarm, planAgentsFarm, resolveCodeDir } from "../src/engine/code.ts";
+import {
+  agentsFarmDir,
+  findRepos,
+  materializeAgentsFarm,
+  planAgentsFarm,
+  pruneFarmProject,
+  resolveCodeDir,
+} from "../src/engine/code.ts";
 import { runUserCommand } from "../src/engine/discovery.ts";
 
 async function base(): Promise<string> {
@@ -93,6 +100,35 @@ test("materializeAgentsFarm symlinks repos into ~/.local/code, resolving to .git
   expect(farm).toBe(join(home, ".local", "code"));
   // stat (not lstat) follows the symlink, mirroring how `claude agents` detects repos.
   expect((await stat(join(farm, "widget", ".git"))).isDirectory()).toBe(true);
+});
+
+test("pruneFarmProject drops the ghost farm entry but leaves other projects intact", async () => {
+  const home = await base();
+  const farm = agentsFarmDir({ HOME: home });
+  const config = join(home, ".claude.json");
+  // Mirror ~/.claude.json after `claude agents` registered the farm as a project.
+  await writeFile(
+    config,
+    JSON.stringify(
+      { numStartups: 7, projects: { [farm]: { foo: 1 }, "/Users/x/Code/real": { bar: 2 } } },
+      null,
+      2,
+    ),
+  );
+  expect(await pruneFarmProject({ HOME: home }, farm)).toBe(true);
+  const after = JSON.parse(await readFile(config, "utf8"));
+  expect(after.projects[farm]).toBeUndefined();
+  // Sibling projects and top-level keys survive untouched.
+  expect(after.projects["/Users/x/Code/real"]).toEqual({ bar: 2 });
+  expect(after.numStartups).toBe(7);
+  // Idempotent: a second prune finds nothing to remove and reports false.
+  expect(await pruneFarmProject({ HOME: home }, farm)).toBe(false);
+});
+
+test("pruneFarmProject is a no-op when the config is missing or HOME is unset", async () => {
+  const home = await base(); // empty dir, no .claude.json
+  expect(await pruneFarmProject({ HOME: home }, agentsFarmDir({ HOME: home }))).toBe(false);
+  expect(await pruneFarmProject({}, "/anything")).toBe(false);
 });
 
 test("runUserCommand dispatches a config-supplied command", async () => {
