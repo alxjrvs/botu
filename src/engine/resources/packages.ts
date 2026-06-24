@@ -48,7 +48,9 @@ export function reconcileMise(ctx: ReconcileCtx): void {
         report.plan("would run: mise install");
         return;
       }
-      if (runArgv(["mise", "install"], ctx.env, { quietStdout: ctx.json }).code === 0)
+      // Run from the repo (cwd-independent apply), so mise resolves the repo's
+      // `mise.toml` instead of whatever project tree `botu` was invoked from.
+      if (runArgv(["mise", "install"], ctx.env, { quietStdout: ctx.json, cwd: ctx.repo }).code === 0)
         report.ok("mise tools installed");
       else report.fail("mise install failed");
       return;
@@ -59,6 +61,7 @@ export function reconcileMise(ctx: ReconcileCtx): void {
       // and still exits 0, so the missing-tool signal is its stdout, not its code.
       const p = Bun.spawnSync(["mise", "ls", "--missing"], {
         env: cleanEnv(ctx.env),
+        cwd: ctx.repo,
         stdout: "pipe",
         stderr: "ignore",
       });

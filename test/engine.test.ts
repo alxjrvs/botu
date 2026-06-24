@@ -2,7 +2,8 @@
 // $HOME + repo and asserts on filesystem state + exit codes — the TS port of the
 // bats behavioral oracle (verbs/exit-codes/--only/copy-vs-link/hook).
 import { expect, test } from "bun:test";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { realpathSync } from "node:fs";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BotuContext } from "../src/context.ts";
@@ -99,6 +100,26 @@ test("run step fires on apply", async () => {
   );
   expect(await reconcile("apply", sb.ctx, {})).toBe(0);
   expect(await pathExists(join(sb.home, "marker"))).toBe(true);
+});
+
+test("run step executes in the repo, independent of the invocation cwd", async () => {
+  // The step records its own working dir. apply must run it from the dotfiles repo
+  // (so e.g. `lefthook install` targets the repo's `.git`), NOT from process.cwd().
+  const sb = await sandbox(
+    `[[section]]\nname = "S"\nrun = [{ on = "apply", cmd = 'pwd > "$HOME/where"' }]\n`,
+  );
+  const elsewhere = await mkdtemp(join(tmpdir(), "botu-cwd-"));
+  const prev = process.cwd();
+  process.chdir(elsewhere); // invoke from somewhere other than the repo
+  try {
+    expect(await reconcile("apply", sb.ctx, {})).toBe(0);
+  } finally {
+    process.chdir(prev);
+  }
+  const where = (await readFile(join(sb.home, "where"), "utf8")).trim();
+  // realpath both sides: macOS tmpdir is a /var → /private/var symlink.
+  expect(realpathSync(where)).toBe(realpathSync(sb.repo));
+  expect(realpathSync(where)).not.toBe(realpathSync(elsewhere));
 });
 
 test("run step with on = uninstall fires on uninstall, not apply", async () => {

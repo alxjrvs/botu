@@ -17,6 +17,10 @@ export interface RunOptions {
   // stdout to fd 2 (the parent's stderr) — diagnostics stay visible, off the JSON
   // channel. Default: inherit the parent's stdout.
   readonly quietStdout?: boolean;
+  // Working directory for the child. Default: inherit the parent's cwd. The engine
+  // sets this to the dotfiles repo so a `run` step (or `mise install`) operates on
+  // the configured machine, not on wherever `botu` happened to be invoked from.
+  readonly cwd?: string;
 }
 
 // fd 2 = the parent's stderr; Bun.spawn routes a child stream to a parent fd by number.
@@ -25,6 +29,7 @@ const childStdout = (opts?: RunOptions): "inherit" | 2 => (opts?.quietStdout ? 2
 export function runShell(cmd: string, env: Env, opts?: RunOptions): ShellResult {
   const p = Bun.spawnSync(["sh", "-c", cmd], {
     env: cleanEnv(env),
+    cwd: opts?.cwd,
     stdout: childStdout(opts),
     stderr: "inherit",
   });
@@ -36,7 +41,12 @@ export function runShell(cmd: string, env: Env, opts?: RunOptions): ShellResult 
 // re-parsed by sh, unlike interpolating it into a `runShell` string. `runShell` stays
 // for user `run` strings, which deliberately want shell ~/glob expansion.
 export function runArgv(args: string[], env: Env, opts?: RunOptions): ShellResult {
-  const p = Bun.spawnSync(args, { env: cleanEnv(env), stdout: childStdout(opts), stderr: "inherit" });
+  const p = Bun.spawnSync(args, {
+    env: cleanEnv(env),
+    cwd: opts?.cwd,
+    stdout: childStdout(opts),
+    stderr: "inherit",
+  });
   return { code: p.exitCode };
 }
 
