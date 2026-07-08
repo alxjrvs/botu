@@ -5,11 +5,27 @@
 // hard-resets to the upstream tip (or the pinned ref, for a detached/@ref-pinned
 // clone — pins are static, so "reset to remote" means "back to the pin") and clears
 // untracked files, leaving the same end state a fresh re-clone would.
+//
+// Committed-but-unpushed commits are real work, not "local changes" — linkRemoteConfigRepo
+// refuses to clobber them (see config/remote.ts), so reset must too: require --force
+// before a hard reset discards commits no remote has.
 import { readConfigBreadcrumb } from "../config/load.ts";
 import type { BotuContext } from "../context.ts";
-import { cleanUntracked, fetchOrigin, hasUpstream, headSha, resetHard } from "../lib/git.ts";
+import {
+  cleanUntracked,
+  fetchOrigin,
+  hasUnpushedCommits,
+  hasUpstream,
+  headSha,
+  resetHard,
+  unpushedCommits,
+} from "../lib/git.ts";
 
-export async function resetConfigRepo(ctx: BotuContext): Promise<number> {
+export interface ResetOptions {
+  readonly force?: boolean;
+}
+
+export async function resetConfigRepo(ctx: BotuContext, opts: ResetOptions = {}): Promise<number> {
   const breadcrumb = await readConfigBreadcrumb(ctx.env);
   if (!breadcrumb) {
     ctx.process.stderr.write("botu: no remote config linked — run `botu link <owner/repo>`\n");
@@ -20,6 +36,17 @@ export async function resetConfigRepo(ctx: BotuContext): Promise<number> {
   const fetch = fetchOrigin(path, ctx.env);
   if (fetch.code !== 0) {
     ctx.process.stderr.write(`botu: could not reach ${remote.url}: ${fetch.stderr || "fetch failed"}\n`);
+    return 1;
+  }
+
+  if (!opts.force && hasUnpushedCommits(path, ctx.env)) {
+    const commits = unpushedCommits(path, ctx.env)
+      .map((c) => `    ${c}`)
+      .join("\n");
+    ctx.process.stderr.write(
+      `botu: ${path} has commit(s) no remote has — reset would discard them:\n${commits}\n` +
+        "botu: pass --force to discard anyway, or `botu push` first\n",
+    );
     return 1;
   }
 

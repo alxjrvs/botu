@@ -49,14 +49,17 @@ applies — the one-command fresh-machine bootstrap is `curl install.sh | sh && 
 init owner/repo`, no repo-relative bootstrap script needed.
 
 Sync is a pre-reconcile step (`src/engine/sync.ts`), not a resource: `verify` fetches
-and reports "N commits behind origin" as drift without touching the working tree;
-`apply`/`fix` pull first and report what moved, then reconcile proceeds against
-whatever's on disk either way — a failed pull is reported but never blocks
-reconciling from the last-known-good local clone. The pull is `git pull --rebase
---autostash` (git stashes any dirty tracked changes before rebasing and restores
-them after, including automatically on an aborted rebase); `apply --commit` commits
-local edits first instead of autostashing them (`src/engine/commit.ts`, shared with
-`botu commit`). A rebase conflict aborts cleanly (`git rebase --abort`, which also
+and reports drift without touching the working tree — "N commits behind origin",
+plus separate warnings for uncommitted local changes and committed-but-unpushed local
+commits, since a clean behind-count alone would otherwise read as "up to date" while
+either kind of local drift sits unreported; `apply`/`fix` pull first and report what
+moved, then reconcile proceeds against whatever's on disk either way — a failed pull
+(including a `git rev-list` failure while checking drift) is reported as a failure but
+never blocks reconciling from the last-known-good local clone. The pull is `git pull
+--rebase --autostash` (git stashes any dirty tracked changes before rebasing and
+restores them after, including automatically on an aborted rebase); `apply --commit`
+commits local edits first instead of autostashing them (`src/engine/commit.ts`, shared
+with `botu commit`). A rebase conflict aborts cleanly (`git rebase --abort`, which also
 restores the autostash) and is reported as a failure, but reconcile still proceeds
 from the local state as it was before the rebase attempt. A pinned `@ref` (tag/sha,
 detached HEAD) is reported as static rather than checked for drift. Auth is whatever
@@ -64,9 +67,12 @@ git/SSH already works in the user's shell — no botu-side credential handling. 
 push` pushes the managed clone's local commits upstream (no auto-commit); `botu
 reset` is the other direction — fetches, then hard-resets to the upstream tip (or
 the pinned `@ref` for a detached clone) and clears untracked files, discarding local
-changes back to what a fresh re-clone would leave. `linkRemoteConfigRepo` refuses to
-wipe a managed clone that has either uncommitted changes or commits not yet pushed
-(checked separately — `git status --porcelain` never reports ahead-of-upstream) —
+changes back to what a fresh re-clone would leave. Like `linkRemoteConfigRepo`, `botu
+reset` refuses to discard commits no remote has (listing them) unless `--force` is
+passed — uncommitted changes alone don't need `--force`, only unpushed commits do.
+`linkRemoteConfigRepo` itself refuses to wipe a managed clone that has either
+uncommitted changes or commits not yet pushed (checked separately — `git status
+--porcelain` never reports ahead-of-upstream) —
 `botu push` or `botu reset` first, then re-link.
 
 ### Config is typed TOML, not code

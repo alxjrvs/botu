@@ -128,6 +128,17 @@ test("orphan reaping reaps an unmodified copy but leaves a modified one", async 
   expect(await pathExists(join(sb.home, "m"))).toBe(true); // modified → left in place
 });
 
+test("copy apply is a no-op once the destination already matches the source", async () => {
+  const sb = await sandbox(`[[section]]\nname = "S"\ncopy = [{ src = "u", dst = "~/u" }]\n`);
+  await sb.write("u", "u");
+  expect(await reconcile("apply", sb.ctx, {})).toBe(0);
+
+  sb.clear();
+  expect(await reconcile("apply", sb.ctx, {})).toBe(0);
+  expect(sb.out()).toContain("already up to date");
+  expect(sb.out()).not.toContain("copied");
+});
+
 test("rollback warns about run side effects it cannot reverse", async () => {
   const sb = await sandbox(
     `[[section]]\nname = "S"\nlink = [{ src = ".z", dst = "~/.z" }]\nrun = [{ on = "apply", cmd = 'touch "$HOME/marker"' }]\n`,
@@ -196,4 +207,22 @@ test("orphan reaping removes a link dropped from the config", async () => {
   expect(await reconcile("apply", sb.ctx, {})).toBe(0);
   expect(await pathExists(join(sb.home, ".a"))).toBe(true);
   expect(await pathExists(join(sb.home, ".b"))).toBe(false); // reaped
+});
+
+test("rollback restores a link orphaned (and reaped) by the same run", async () => {
+  // A reap is a real mutation like any other in the run — it must go through the same
+  // journal + backup transaction so `botu rollback` can undo it, not delete outside it.
+  const sb = await sandbox(
+    `[[section]]\nname = "S"\nlink = [{ src = ".a", dst = "~/.a" }, { src = ".b", dst = "~/.b" }]\n`,
+  );
+  await sb.write(".a", "a");
+  await sb.write(".b", "b");
+  expect(await reconcile("apply", sb.ctx, {})).toBe(0);
+
+  await sb.write("botufile.toml", `[[section]]\nname = "S"\nlink = [{ src = ".a", dst = "~/.a" }]\n`);
+  expect(await reconcile("apply", sb.ctx, {})).toBe(0);
+  expect(await pathExists(join(sb.home, ".b"))).toBe(false); // reaped
+
+  expect(await rollback(sb.ctx)).toBe(0);
+  expect(await linkTarget(join(sb.home, ".b"))).toBe(join(sb.repo, ".b")); // restored
 });

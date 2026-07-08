@@ -1,16 +1,20 @@
 // Config-repo sync: the pre-reconcile step that keeps a repo-only config fresh.
 // `verify` (and any dry-run) fetches and reports drift without touching the working
-// tree; `apply`/`fix` pull (rebasing local changes on top via --autostash, or
-// committing them first with --commit) and report what moved, then reconcile
-// proceeds against whatever's on disk regardless — a failed pull is reported but
-// never blocks reconciling from the last-known-good local state (a rebase conflict
+// tree — behind origin, ahead with unpushed commits, or a dirty tree, since those are
+// exactly the states `botu commit`/`botu push` exist to handle and "up to date" must
+// not paper over them. `apply`/`fix` pull (rebasing local changes on top via
+// --autostash, or committing them first with --commit) and report what moved, then
+// reconcile proceeds against whatever's on disk regardless — a failed pull is reported
+// but never blocks reconciling from the last-known-good local state (a rebase conflict
 // is aborted before returning, so "local state" is never left mid-rebase).
 import { readConfigBreadcrumb } from "../config/load.ts";
 import {
   diffNameOnly,
   fetchOrigin,
+  hasUnpushedCommits,
   hasUpstream,
   headSha,
+  isClean,
   pullRebaseAutostash,
   rebaseAbort,
   revListCount,
@@ -52,8 +56,16 @@ export async function syncConfigRepo(
 
   if (verb === "verify" || dryRun) {
     const behind = revListCount(repo, "HEAD..@{u}", env);
-    if (behind === 0) report.ok("up to date with origin");
-    else report.warn(`${behind} commit(s) behind origin`);
+    if (behind === undefined) {
+      report.fail("could not determine drift against origin (git rev-list failed)");
+      return;
+    }
+    const unpushed = hasUnpushedCommits(repo, env);
+    const dirty = !isClean(repo, env);
+    if (behind > 0) report.warn(`${behind} commit(s) behind origin`);
+    if (unpushed) report.warn("local commit(s) not pushed to origin");
+    if (dirty) report.warn("uncommitted local changes");
+    if (behind === 0 && !unpushed && !dirty) report.ok("up to date with origin");
     return;
   }
 
@@ -70,6 +82,10 @@ export async function syncConfigRepo(
   }
 
   const behind = revListCount(repo, "HEAD..@{u}", env);
+  if (behind === undefined) {
+    report.fail("could not determine drift against origin (git rev-list failed)");
+    return;
+  }
   if (behind === 0) {
     report.ok("up to date with origin");
     return;

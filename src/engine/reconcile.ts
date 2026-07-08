@@ -8,9 +8,9 @@ import { overlayFiles, profileContext, sectionApplies } from "../config/profile.
 import type { Botufile, Section } from "../config/schema.ts";
 import type { BotuContext } from "../context.ts";
 import { colorEnabled } from "../lib/color.ts";
-import { displayPath, filesEqual, linkTarget, pathExists, rm } from "../lib/fs.ts";
+import { backupTo, displayPath, filesEqual, linkTarget, pathExists, rm } from "../lib/fs.ts";
 import { Reporter } from "../lib/reporter.ts";
-import { Journal, newRunId, pruneRuns, readRun } from "./journal.ts";
+import { Journal, newRunId, pruneRuns, readRun, type UndoToken } from "./journal.ts";
 import { reconcileSection } from "./registry.ts";
 import { backupsDir, type ManifestEntry, readManifest, writeManifest } from "./state.ts";
 import { syncConfigRepo } from "./sync.ts";
@@ -57,7 +57,15 @@ async function reapOrphans(ctx: ReconcileCtx, prior: readonly ManifestEntry[]): 
     if (ctx.verb === "verify") ctx.report.warn(`${disp} ${why} — botu fix to reap`);
     else if (ctx.dryRun) ctx.report.note(`would reap ${disp}`);
     else {
-      await rm(dst, { force: true });
+      // Same transaction as every other mutation here: journaled with a backup, so
+      // `botu rollback` can restore a reaped file instead of the deletion being a
+      // silent, un-undoable side effect outside the run's safety net.
+      await ctx.journal?.intent("reap", dst);
+      const undo: UndoToken = ctx.backupRoot
+        ? { kind: "restore", from: await backupTo(dst, ctx.backupRoot) }
+        : { kind: "remove" };
+      if (!ctx.backupRoot) await rm(dst, { force: true });
+      await ctx.journal?.done("reap", dst, undo);
       ctx.report.ok(`reaped orphan ${disp}`);
     }
   };

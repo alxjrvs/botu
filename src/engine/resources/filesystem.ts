@@ -131,6 +131,14 @@ export async function reconcileCopy(entry: Link, ctx: ReconcileCtx): Promise<voi
   switch (ctx.verb) {
     case "apply":
     case "fix": {
+      // Mirrors link's "already linked" skip and osx's change-gate: re-copying,
+      // re-chmoding, journaling, and backing up an already-current file every run
+      // violates the one-loop verb contract (verify already calls this state "copy
+      // current") and churns a fresh retained backup of an unchanged file each apply.
+      if (await filesEqual(src, dst)) {
+        report.skip(`${disp} already up to date`);
+        return;
+      }
       if (ctx.dryRun) {
         report.plan(`${disp} would be copied`);
         return;
