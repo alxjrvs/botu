@@ -190,6 +190,25 @@ test("linkRemoteConfigRepo refuses to clobber an unclean managed clone on re-lin
   expect(linkRemoteConfigRepo(env, origin)).rejects.toBeInstanceOf(BotuConfigError);
 });
 
+test("linkRemoteConfigRepo refuses to clobber a managed clone with committed-but-unpushed work", async () => {
+  const origin = await gitFixture();
+  const env = { XDG_STATE_HOME: await base() };
+  const dest = await linkRemoteConfigRepo(env, origin);
+  const git = (...args: string[]) =>
+    Bun.spawnSync(["git", "-C", dest, ...args], { stdout: "ignore", stderr: "ignore" });
+  await writeFile(join(dest, "new.txt"), "hi\n");
+  git("add", "-A");
+  git("-c", "user.email=t@t.com", "-c", "user.name=t", "commit", "-q", "-m", "local work");
+  // Working tree is clean once committed — `git status --porcelain` alone would miss
+  // this. Re-linking must still refuse, or the commit is silently discarded on re-clone.
+  expect(linkRemoteConfigRepo(env, origin)).rejects.toBeInstanceOf(BotuConfigError);
+});
+
+test("linkRemoteConfigRepo refuses a relative state dir (HOME and XDG_STATE_HOME both unset)", async () => {
+  const origin = await gitFixture();
+  expect(linkRemoteConfigRepo({}, origin)).rejects.toBeInstanceOf(BotuConfigError);
+});
+
 test("runUserCommand returns undefined for an unknown command", async () => {
   const repo = await base();
   await writeFile(join(repo, "botufile.toml"), `[[section]]\nname = "x"\n`);

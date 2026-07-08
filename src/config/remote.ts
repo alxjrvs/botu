@@ -4,10 +4,10 @@
 // engine/sync.ts owns the ongoing fetch/pull-and-report on every apply/verify/fix;
 // this file owns only the initial (re-)clone.
 import { mkdir, rm } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, isAbsolute } from "node:path";
 import type { Env } from "../engine/state.ts";
 import { pathExists } from "../lib/fs.ts";
-import { checkoutRef, cloneRepo, isClean } from "../lib/git.ts";
+import { checkoutRef, cloneRepo, isAheadOfUpstream, isClean } from "../lib/git.ts";
 import {
   BotuConfigError,
   CONFIG_FILE,
@@ -22,14 +22,18 @@ export interface ParsedRemoteRef {
   readonly ref?: string;
 }
 
-// Split a trailing `@ref` pin off the reference. An SSH shorthand's `@` (as in
-// `git@github.com:owner/repo`) always sits before the first `/`; a pin's `@` never
-// does — so only split when the last `@` comes after the last `/`.
+// An SSH shorthand (`git@github.com:owner/repo`) has an `@` with no `/` before it,
+// immediately followed by a bare host and `:` — that's the one shape whose `@` isn't
+// a ref pin. Everything else (owner/repo, github:owner/repo, https://, ssh://, and
+// crucially a ref that itself contains a slash, e.g. `owner/repo@feature/foo`) splits
+// on the last `@` unconditionally; a slash-position heuristic gets those wrong.
+const SSH_SHORTHAND_RE = /^[^/\s@]+@[^/\s@:]+:/;
+
 function splitRef(input: string): { base: string; ref?: string } {
+  if (SSH_SHORTHAND_RE.test(input)) return { base: input };
   const at = input.lastIndexOf("@");
-  const slash = input.lastIndexOf("/");
-  if (at > slash) return { base: input.slice(0, at), ref: input.slice(at + 1) };
-  return { base: input };
+  if (at === -1) return { base: input };
+  return { base: input.slice(0, at), ref: input.slice(at + 1) };
 }
 
 const GITHUB_SHORTHAND_RE = /^[\w.-]+\/[\w.-]+$/;
@@ -49,16 +53,27 @@ export function parseRemoteRef(input: string): ParsedRemoteRef {
 
 // (Re-)clone `refInput` into the managed cache dir and record it as the active
 // config. Re-linking always wipes and re-clones — the cache dir is never meant to
-// hold precious uncommitted work, so refuse instead of silently clobbering one that
-// has any (push or clean it up first, then re-link).
+// hold precious work, so refuse instead of silently clobbering one that has any
+// (uncommitted changes, or commits made but not yet pushed) — push or clean it up
+// first, then re-link.
 export async function linkRemoteConfigRepo(env: Env, refInput: string): Promise<string> {
   const { url, ref } = parseRemoteRef(refInput);
   const dest = configRepoCacheDir(env);
 
+  // configRepoCacheDir is state-dir-relative; state dir falls back to a *relative*
+  // path when neither XDG_STATE_HOME nor HOME is set (see engine/state.ts:stateHome).
+  // The rm below would then resolve against the process cwd — mirrors the same
+  // guard engine/code.ts's materializeAgentsFarm takes before its own rebuild-via-rm.
+  if (!isAbsolute(dest)) {
+    throw new BotuConfigError(
+      "botu's state dir resolved to a relative path (HOME and XDG_STATE_HOME both unset) — refusing to clone/wipe there",
+    );
+  }
+
   if (await pathExists(dest)) {
-    if (!isClean(dest, env)) {
+    if (!isClean(dest, env) || isAheadOfUpstream(dest, env)) {
       throw new BotuConfigError(
-        `${dest} has uncommitted changes — \`botu push\` or clean it up before re-linking`,
+        `${dest} has uncommitted or unpushed changes — \`botu push\` or clean it up before re-linking`,
       );
     }
     await rm(dest, { recursive: true, force: true });

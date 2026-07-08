@@ -46,9 +46,13 @@ export async function doctor(ctx: BotuContext): Promise<number> {
 
   report.header("Config repo");
   const breadcrumb = await readConfigBreadcrumb(ctx.env);
+  // Tracked so the Tools section below doesn't also warn on the same missing git —
+  // one fact, one report, at the severity that actually applies here.
+  let gitRequiredAndMissing = false;
   if (!breadcrumb) {
     report.warn("no remote config linked — run `botu link <owner/repo>` or `botu init <owner/repo>`");
   } else if (!hasCommand("git", ctx.env)) {
+    gitRequiredAndMissing = true;
     report.fail("git not on PATH — required to sync the config repo (repo-only config)");
   } else if (!remoteReachable(breadcrumb.remote.url, ctx.env)) {
     report.warn(`cannot reach ${breadcrumb.remote.url} — sync will be skipped until it's reachable`);
@@ -58,6 +62,7 @@ export async function doctor(ctx: BotuContext): Promise<number> {
 
   report.header("Tools on PATH");
   for (const { cmd, why } of TOOLS) {
+    if (cmd === "git" && gitRequiredAndMissing) continue;
     if (hasCommand(cmd, ctx.env)) report.ok(`${cmd} found`);
     else report.warn(`${cmd} not on PATH — needed for ${why}`);
   }

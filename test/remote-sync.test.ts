@@ -3,7 +3,7 @@
 // `git clone`/`fetch`/`push` treat a local path exactly like any other remote, so
 // none of this needs real network access.
 import { expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readConfigBreadcrumb } from "../src/config/load.ts";
@@ -90,6 +90,15 @@ test("parseRemoteRef pins a full URL", () => {
   });
 });
 
+test("parseRemoteRef pins a ref that itself contains a slash", () => {
+  // git-flow-style branch names (feature/x, release/1.0) are extremely common — a
+  // slash-position heuristic for the SSH-shorthand split gets this wrong.
+  expect(parseRemoteRef("alxjrvs/dotfiles@feature/foo")).toEqual({
+    url: "https://github.com/alxjrvs/dotfiles.git",
+    ref: "feature/foo",
+  });
+});
+
 // ---- sync: verify reports drift, apply pulls -------------------------------
 
 test("verify reports 0 drift right after linking", async () => {
@@ -132,6 +141,40 @@ test("apply fast-forward-pulls and reports what changed", async () => {
   expect(out()).toContain("pulled 1 commit(s)");
   expect(out()).toContain("botufile.toml");
   expect(await readFile(join(repo, "botufile.toml"), "utf8")).toContain('name = "y"');
+});
+
+test("apply reports an unreachable origin but still reconciles from the local clone", async () => {
+  const origin = await originFixture();
+  const env = { XDG_STATE_HOME: await base(), NO_COLOR: "1" };
+  const repo = await linkRemoteConfigRepo(env, origin);
+  await rm(origin, { recursive: true, force: true }); // origin vanishes (moved/deleted/offline)
+
+  const { ctx, out } = ctxFor(env, repo);
+  const rc = await reconcile("apply", ctx, {});
+  expect(out()).toContain("could not reach");
+  expect(out()).toContain("reconciling from the local clone as-is");
+  expect(rc).toBe(0);
+});
+
+test("apply reports a failed fast-forward but still reconciles from the local clone", async () => {
+  const origin = await originFixture();
+  const env = { XDG_STATE_HOME: await base(), NO_COLOR: "1" };
+  const repo = await linkRemoteConfigRepo(env, origin);
+
+  // Diverge: a local-only commit in the managed clone...
+  await writeFile(join(repo, "botufile.toml"), `[[section]]\nname = "x"\n[[section]]\nname = "local"\n`);
+  commitAll(repo, "local edit");
+  // ...and an incompatible commit on origin's main, off the same base — no longer a
+  // fast-forward either way.
+  await writeFile(join(origin, "botufile.toml"), `[[section]]\nname = "x"\n[[section]]\nname = "remote"\n`);
+  commitAll(origin, "remote edit");
+
+  const { ctx, out } = ctxFor(env, repo);
+  const rc = await reconcile("apply", ctx, {});
+  expect(out()).toContain("fast-forward pull failed");
+  // never blocks reconciling from the last-known-good (here: locally-committed) state
+  expect(await readFile(join(repo, "botufile.toml"), "utf8")).toContain('name = "local"');
+  expect(rc).toBe(1);
 });
 
 test("a pinned ref is reported as static, not checked for drift", async () => {

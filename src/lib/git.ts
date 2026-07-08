@@ -25,6 +25,10 @@ export function push(dir: string, env: Env): CaptureResult {
   return captureArgv(["git", "push"], env, { cwd: dir });
 }
 
+// Working-tree/index clean — mirrors `git status --porcelain`. This alone does NOT
+// mean "safe to discard": a repo can be clean here while still carrying committed
+// commits that were never pushed (porcelain status never reports ahead-of-upstream).
+// Callers that intend to wipe the directory must also check isAheadOfUpstream.
 export function isClean(dir: string, env: Env): boolean {
   const r = captureArgv(["git", "status", "--porcelain"], env, { cwd: dir });
   return r.code === 0 && r.stdout.length === 0;
@@ -34,7 +38,14 @@ export function isClean(dir: string, env: Env): boolean {
 // HEAD after pinning to a tag/sha — the caller reads that as "not tracking a moving
 // branch" rather than as an error.
 export function hasUpstream(dir: string, env: Env): boolean {
-  return captureArgv(["git", "rev-parse", "--abbrev-ref", "@{u}"], env, { cwd: dir }).code === 0;
+  return captureArgv(["git", "rev-parse", "@{u}"], env, { cwd: dir }).code === 0;
+}
+
+// Local commits HEAD has that its upstream doesn't — the "did I forget to push"
+// check. False (not an error) when there's no upstream at all (a pinned tag/sha):
+// nothing to compare against, so there's nothing to call "unpushed".
+export function isAheadOfUpstream(dir: string, env: Env): boolean {
+  return hasUpstream(dir, env) && revListCount(dir, "@{u}..HEAD", env) > 0;
 }
 
 export function headSha(dir: string, env: Env): string | undefined {
