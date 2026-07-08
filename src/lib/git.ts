@@ -38,7 +38,7 @@ export function cleanUntracked(dir: string, env: Env): CaptureResult {
 // Working-tree/index clean — mirrors `git status --porcelain`. This alone does NOT
 // mean "safe to discard": a repo can be clean here while still carrying committed
 // commits that were never pushed (porcelain status never reports ahead-of-upstream).
-// Callers that intend to wipe the directory must also check isAheadOfUpstream.
+// Callers that intend to wipe the directory must also check hasUnpushedCommits.
 export function isClean(dir: string, env: Env): boolean {
   const r = captureArgv(["git", "status", "--porcelain"], env, { cwd: dir });
   return r.code === 0 && r.stdout.length === 0;
@@ -51,11 +51,13 @@ export function hasUpstream(dir: string, env: Env): boolean {
   return captureArgv(["git", "rev-parse", "@{u}"], env, { cwd: dir }).code === 0;
 }
 
-// Local commits HEAD has that its upstream doesn't — the "did I forget to push"
-// check. False (not an error) when there's no upstream at all (a pinned tag/sha):
-// nothing to compare against, so there's nothing to call "unpushed".
-export function isAheadOfUpstream(dir: string, env: Env): boolean {
-  return hasUpstream(dir, env) && revListCount(dir, "@{u}..HEAD", env) > 0;
+// Commits HEAD carries that no remote ref has — the "would wiping this lose work"
+// check. Deliberately NOT @{u}-based: a pinned @tag/@sha clone is detached, so it has
+// no upstream to be "ahead of", yet commits made there are every bit as unpushed —
+// comparing against --remotes catches both that case and the plain branch-ahead one.
+export function hasUnpushedCommits(dir: string, env: Env): boolean {
+  const r = captureArgv(["git", "rev-list", "--count", "HEAD", "--not", "--remotes"], env, { cwd: dir });
+  return r.code === 0 && (Number.parseInt(r.stdout, 10) || 0) > 0;
 }
 
 export function headSha(dir: string, env: Env): string | undefined {

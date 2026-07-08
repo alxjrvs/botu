@@ -3,11 +3,11 @@
 // `@ref` — clone it into the botu-managed cache dir, and record the breadcrumb.
 // engine/sync.ts owns the ongoing fetch/pull-and-report on every apply/verify/fix;
 // this file owns only the initial (re-)clone.
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, rename, rm } from "node:fs/promises";
 import { dirname, isAbsolute } from "node:path";
 import type { Env } from "../engine/state.ts";
 import { pathExists } from "../lib/fs.ts";
-import { checkoutRef, cloneRepo, isAheadOfUpstream, isClean } from "../lib/git.ts";
+import { checkoutRef, cloneRepo, hasUnpushedCommits, isClean } from "../lib/git.ts";
 import {
   BotuConfigError,
   CONFIG_FILE,
@@ -77,28 +77,38 @@ export async function linkRemoteConfigRepo(env: Env, refInput: string): Promise<
     );
   }
 
-  if (await pathExists(dest)) {
-    if (!isClean(dest, env) || isAheadOfUpstream(dest, env)) {
-      throw new BotuConfigError(
-        `${dest} has uncommitted or unpushed changes — \`botu push\` or \`botu reset\` before re-linking`,
-      );
-    }
-    await rm(dest, { recursive: true, force: true });
+  if ((await pathExists(dest)) && (!isClean(dest, env) || hasUnpushedCommits(dest, env))) {
+    throw new BotuConfigError(
+      `${dest} has uncommitted or unpushed changes — \`botu push\` or \`botu reset\` before re-linking`,
+    );
   }
 
+  // Clone-validate-swap: the new repo is cloned and vetted in a staging dir, and the
+  // existing clone is replaced only after every check passes. Wiping dest up front
+  // would turn a failed link (typo'd repo, offline, bad @ref) into lost offline-apply
+  // capability — or worse, leave a *different* repo's working tree at the path the
+  // still-unrewritten breadcrumb names, and the next apply would reconcile from it.
+  const staging = `${dest}.staging`;
   await mkdir(dirname(dest), { recursive: true });
-  const clone = cloneRepo(url, dest, env);
-  if (clone.code !== 0) {
-    throw new BotuConfigError(`git clone ${url} failed: ${clone.stderr || "unknown error"}`);
-  }
-  if (ref) {
-    const co = checkoutRef(dest, ref, env);
-    if (co.code !== 0) {
-      throw new BotuConfigError(`git checkout ${ref} failed: ${co.stderr || "unknown error"}`);
+  await rm(staging, { recursive: true, force: true }); // leftover from a crashed link
+  try {
+    const clone = cloneRepo(url, staging, env);
+    if (clone.code !== 0) {
+      throw new BotuConfigError(`git clone ${url} failed: ${clone.stderr || "unknown error"}`);
     }
-  }
-  if (!(await hasBotufile(dest))) {
-    throw new BotuConfigError(`no ${CONFIG_FILE} at ${url} — doesn't look like a botu dotfiles repo`);
+    if (ref) {
+      const co = checkoutRef(staging, ref, env);
+      if (co.code !== 0) {
+        throw new BotuConfigError(`git checkout ${ref} failed: ${co.stderr || "unknown error"}`);
+      }
+    }
+    if (!(await hasBotufile(staging))) {
+      throw new BotuConfigError(`no ${CONFIG_FILE} at ${url} — doesn't look like a botu dotfiles repo`);
+    }
+    await rm(dest, { recursive: true, force: true });
+    await rename(staging, dest);
+  } finally {
+    await rm(staging, { recursive: true, force: true });
   }
 
   const remote: ConfigRemote = ref ? { url, ref } : { url };

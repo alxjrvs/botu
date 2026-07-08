@@ -68,6 +68,14 @@ export interface CaptureResult extends ShellResult {
 // the text (git plumbing: remote URLs, commit counts, changed-file lists), not just a
 // pass/fail exit code.
 export function captureArgv(args: string[], env: Env, opts?: RunOptions): CaptureResult {
-  const p = Bun.spawnSync(args, { env: cleanEnv(env), cwd: opts?.cwd, stdout: "pipe", stderr: "pipe" });
-  return { code: p.exitCode, stdout: p.stdout.toString().trim(), stderr: p.stderr.toString().trim() };
+  // Bun.spawnSync throws (missing executable, nonexistent cwd) rather than returning
+  // a failed result. Callers treat the tool as a black box with exit codes — sync
+  // must degrade to "reconcile from the local clone", push/reset to a clean exit 1 —
+  // so map the throw onto that contract instead of crashing them.
+  try {
+    const p = Bun.spawnSync(args, { env: cleanEnv(env), cwd: opts?.cwd, stdout: "pipe", stderr: "pipe" });
+    return { code: p.exitCode, stdout: p.stdout.toString().trim(), stderr: p.stderr.toString().trim() };
+  } catch (e) {
+    return { code: -1, stdout: "", stderr: e instanceof Error ? e.message : String(e) };
+  }
 }

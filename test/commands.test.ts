@@ -20,6 +20,7 @@ import {
   resolveCodeDir,
 } from "../src/engine/code.ts";
 import { runUserCommand } from "../src/engine/discovery.ts";
+import { captureArgv } from "../src/lib/proc.ts";
 
 async function base(): Promise<string> {
   return mkdtemp(join(tmpdir(), "botu-cmd-"));
@@ -202,6 +203,39 @@ test("linkRemoteConfigRepo refuses to clobber a managed clone with committed-but
   // Working tree is clean once committed — `git status --porcelain` alone would miss
   // this. Re-linking must still refuse, or the commit is silently discarded on re-clone.
   expect(linkRemoteConfigRepo(env, origin)).rejects.toBeInstanceOf(BotuConfigError);
+});
+
+test("linkRemoteConfigRepo refuses to clobber unpushed commits on a pinned (detached-HEAD) clone", async () => {
+  const origin = await gitFixture();
+  const sha = captureArgv(["git", "-C", origin, "rev-parse", "HEAD"], {}).stdout;
+  const env = { XDG_STATE_HOME: await base() };
+  const dest = await linkRemoteConfigRepo(env, `${origin}@${sha}`);
+  // Commit on the detached HEAD: the tree is clean and there is no upstream to be
+  // "ahead of" — only the not-on-any-remote check can see this commit, so an
+  // @{u}-based guard would let the re-link wipe it.
+  await writeFile(join(dest, "new.txt"), "hi\n");
+  captureArgv(["git", "-C", dest, "add", "-A"], {});
+  captureArgv(
+    ["git", "-C", dest, "-c", "user.email=t@t.com", "-c", "user.name=t", "commit", "-q", "-m", "pinned work"],
+    {},
+  );
+  expect(await linkRemoteConfigRepo(env, origin).catch((e) => e)).toBeInstanceOf(BotuConfigError);
+});
+
+test("a failed re-link leaves the existing clone and breadcrumb untouched", async () => {
+  const good = await gitFixture();
+  const env = { XDG_STATE_HOME: await base() };
+  const dest = await linkRemoteConfigRepo(env, good);
+  const other = await gitFixture();
+  // Clone of `other` succeeds but the bogus pin fails its checkout: the last-known-good
+  // clone must survive (offline apply depends on it), and the breadcrumb must still
+  // name `good` — not dangle over a half-linked dir holding `other`'s content.
+  expect(await linkRemoteConfigRepo(env, `${other}@nosuchref`).catch((e) => e)).toBeInstanceOf(
+    BotuConfigError,
+  );
+  expect((await readConfigBreadcrumb(env))?.remote.url).toBe(good);
+  expect(await resolveConfigDir(env, await base())).toBe(dest);
+  expect(captureArgv(["git", "-C", dest, "remote", "get-url", "origin"], {}).stdout).toBe(good);
 });
 
 test("linkRemoteConfigRepo refuses a relative state dir (HOME and XDG_STATE_HOME both unset)", async () => {

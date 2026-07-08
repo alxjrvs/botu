@@ -320,3 +320,12 @@ test("push fails cleanly when no remote config is linked", async () => {
   const { ctx } = ctxFor({ XDG_STATE_HOME: await base(), NO_COLOR: "1" }, await base());
   expect(await pushConfigRepo(ctx)).toBe(1);
 });
+
+// ---- captureArgv hardening --------------------------------------------------
+
+test("captureArgv reports a missing executable or cwd as a failed result, not a throw", () => {
+  // Bun.spawnSync throws for both; sync/push/reset rely on getting a code back so a
+  // missing git (or a stale breadcrumb path) degrades to their reported-error paths.
+  expect(captureArgv(["botu-definitely-not-a-real-tool"], {}).code).toBe(-1);
+  expect(captureArgv(["git", "status"], {}, { cwd: join(tmpdir(), "botu-no-such-dir") }).code).toBe(-1);
+});
