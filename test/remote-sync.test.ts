@@ -12,6 +12,8 @@ import type { BotuContext } from "../src/context.ts";
 import { doctor } from "../src/engine/doctor.ts";
 import { pushConfigRepo } from "../src/engine/push.ts";
 import { reconcile } from "../src/engine/reconcile.ts";
+import { resetConfigRepo } from "../src/engine/reset.ts";
+import { pathExists } from "../src/lib/fs.ts";
 import { captureArgv } from "../src/lib/proc.ts";
 
 async function base(): Promise<string> {
@@ -210,6 +212,64 @@ test("a pinned ref is reported as static, not checked for drift", async () => {
   const rc = await reconcile("verify", ctx, {});
   expect(out()).toContain("not tracking a moving branch");
   expect(rc).toBe(0);
+});
+
+// ---- reset ------------------------------------------------------------------
+
+test("reset discards uncommitted and committed-but-unpushed local changes", async () => {
+  const origin = await originFixture();
+  const env = { XDG_STATE_HOME: await base(), NO_COLOR: "1" };
+  const repo = await linkRemoteConfigRepo(env, origin);
+
+  // A committed-but-unpushed local change...
+  await writeFile(join(repo, "botufile.toml"), `[[section]]\nname = "x"\n[[section]]\nname = "local"\n`);
+  commitAll(repo, "local edit");
+  // ...plus an uncommitted one on top.
+  await writeFile(join(repo, "untracked.txt"), "oops\n");
+
+  const { ctx, out } = ctxFor(env, repo);
+  const rc = await resetConfigRepo(ctx);
+  expect(rc).toBe(0);
+  expect(out()).toContain("reset");
+  expect(await readFile(join(repo, "botufile.toml"), "utf8")).toBe(
+    await readFile(join(origin, "botufile.toml"), "utf8"),
+  );
+  expect(await pathExists(join(repo, "untracked.txt"))).toBe(false);
+});
+
+test("reset on a pinned clone goes back to the pinned ref, not origin's current tip", async () => {
+  const origin = await originFixture();
+  const sha = git(origin, "rev-parse", "HEAD").stdout;
+  const env = { XDG_STATE_HOME: await base(), NO_COLOR: "1" };
+  const repo = await linkRemoteConfigRepo(env, `${origin}@${sha}`);
+
+  // origin moves on...
+  await writeFile(join(origin, "botufile.toml"), `[[section]]\nname = "x"\n[[section]]\nname = "y"\n`);
+  commitAll(origin, "add y");
+  // ...and the pinned clone gets a local edit.
+  await writeFile(join(repo, "botufile.toml"), `[[section]]\nname = "local"\n`);
+  commitAll(repo, "local edit");
+
+  const { ctx } = ctxFor(env, repo);
+  expect(await resetConfigRepo(ctx)).toBe(0);
+  // back to the pin, not origin's now-two-commits-ahead tip
+  expect(await readFile(join(repo, "botufile.toml"), "utf8")).toBe(`[[section]]\nname = "x"\n`);
+});
+
+test("reset fails cleanly when no remote config is linked", async () => {
+  const { ctx } = ctxFor({ XDG_STATE_HOME: await base(), NO_COLOR: "1" }, await base());
+  expect(await resetConfigRepo(ctx)).toBe(1);
+});
+
+test("reset fails cleanly when origin is unreachable", async () => {
+  const origin = await originFixture();
+  const env = { XDG_STATE_HOME: await base(), NO_COLOR: "1" };
+  const repo = await linkRemoteConfigRepo(env, origin);
+  await rm(origin, { recursive: true, force: true });
+
+  const { ctx, out } = ctxFor(env, repo);
+  expect(await resetConfigRepo(ctx)).toBe(1);
+  expect(out()).toContain("could not reach");
 });
 
 // ---- doctor -------------------------------------------------------------------

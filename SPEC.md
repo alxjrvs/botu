@@ -46,7 +46,13 @@ reconciling from the last-known-good local clone. Non-fast-forward divergence fa
 loudly rather than attempting a merge; a pinned `@ref` (tag/sha, detached HEAD) is
 reported as static rather than checked for drift. Auth is whatever git/SSH already
 works in the user's shell — no botu-side credential handling. `botu push` pushes the
-managed clone's local commits upstream (no auto-commit).
+managed clone's local commits upstream (no auto-commit); `botu reset` is the other
+direction — fetches, then hard-resets to the upstream tip (or the pinned `@ref` for a
+detached clone) and clears untracked files, discarding local changes back to what a
+fresh re-clone would leave. `linkRemoteConfigRepo` refuses to wipe a managed clone
+that has either uncommitted changes or commits not yet pushed (checked separately —
+`git status --porcelain` never reports ahead-of-upstream) — `botu push` or `botu
+reset` first, then re-link.
 
 ### Config is typed TOML, not code
 
@@ -97,8 +103,8 @@ the dotfiles repo (path + remote) and code dir.
 ```
 src/
   cli.ts · index.ts        @stricli app + entrypoint (dispatch: mcp, user cmds, built-ins)
-  commands/                init, link, apply/verify/fix/update/uninstall (reconcile.ts), push, where,
-                           rollback, upgrade, validate, doctor, code, mcp, completions, man
+  commands/                init, link, apply/verify/fix/update/uninstall (reconcile.ts), push, reset,
+                           where, rollback, upgrade, validate, doctor, code, mcp, completions, man
                            catalog.ts (command names: dispatch guard + completions + man)
   engine/
     reconcile.ts           the one verb loop

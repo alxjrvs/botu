@@ -24,6 +24,7 @@ botu verify                  # check for drift (exit 0 ok / 2 warn / 1 fail)
 botu verify --json           # … as a structured drift report
 botu fix                     # repair drift
 botu push                    # push the config repo's local commits upstream
+botu reset                   # discard local changes in the config repo, reset to origin
 botu rollback                # undo the last apply (restores backed-up files)
 botu validate                # parse + schema-check the botufile; change nothing
 botu doctor                  # check botu's own preconditions (tools, keychain, state)

@@ -61,8 +61,8 @@ export function parseRemoteRef(input: string): ParsedRemoteRef {
 // (Re-)clone `refInput` into the managed cache dir and record it as the active
 // config. Re-linking always wipes and re-clones — the cache dir is never meant to
 // hold precious work, so refuse instead of silently clobbering one that has any
-// (uncommitted changes, or commits made but not yet pushed) — push or clean it up
-// first, then re-link.
+// (uncommitted changes, or commits made but not yet pushed) — `botu push` (to keep
+// it) or `botu reset` (to discard it) first, then re-link.
 export async function linkRemoteConfigRepo(env: Env, refInput: string): Promise<string> {
   const { url, ref } = parseRemoteRef(refInput);
   const dest = configRepoCacheDir(env);
@@ -80,7 +80,7 @@ export async function linkRemoteConfigRepo(env: Env, refInput: string): Promise<
   if (await pathExists(dest)) {
     if (!isClean(dest, env) || isAheadOfUpstream(dest, env)) {
       throw new BotuConfigError(
-        `${dest} has uncommitted or unpushed changes — \`botu push\` or clean it up before re-linking`,
+        `${dest} has uncommitted or unpushed changes — \`botu push\` or \`botu reset\` before re-linking`,
       );
     }
     await rm(dest, { recursive: true, force: true });

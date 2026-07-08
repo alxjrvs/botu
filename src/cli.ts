@@ -17,6 +17,7 @@ import {
   updateCommand,
   verifyCommand,
 } from "./commands/reconcile.ts";
+import { resetCommand } from "./commands/reset.ts";
 import { rollbackCommand } from "./commands/rollback.ts";
 import { upgradeCommand } from "./commands/upgrade.ts";
 import { validateCommand } from "./commands/validate.ts";
@@ -33,6 +34,7 @@ const routes = buildRouteMap({
     update: updateCommand,
     uninstall: uninstallCommand,
     push: pushCommand,
+    reset: resetCommand,
     where: whereCommand,
     rollback: rollbackCommand,
     upgrade: upgradeCommand,

@@ -25,6 +25,16 @@ export function push(dir: string, env: Env): CaptureResult {
   return captureArgv(["git", "push"], env, { cwd: dir });
 }
 
+export function resetHard(dir: string, ref: string, env: Env): CaptureResult {
+  return captureArgv(["git", "reset", "--hard", ref], env, { cwd: dir });
+}
+
+// -fd only (no -x): clears untracked files/dirs same as a fresh clone would leave,
+// without also nuking gitignored build/cache artifacts a hook might have left behind.
+export function cleanUntracked(dir: string, env: Env): CaptureResult {
+  return captureArgv(["git", "clean", "-fd"], env, { cwd: dir });
+}
+
 // Working-tree/index clean — mirrors `git status --porcelain`. This alone does NOT
 // mean "safe to discard": a repo can be clean here while still carrying committed
 // commits that were never pushed (porcelain status never reports ahead-of-upstream).
