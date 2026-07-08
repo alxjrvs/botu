@@ -34,10 +34,10 @@ type ApplyFlags = {
   profile?: string[];
 };
 
-function linkModeOf(flags: { force?: boolean; skip?: boolean }): LinkMode {
-  if (flags.force) return "overwrite";
-  if (flags.skip) return "skip";
-  return "interactive";
+// overwrite is the default (and what --force explicitly asks for too) — --skip is
+// the one way to opt out of clobbering a conflicting target.
+function linkModeOf(flags: { skip?: boolean }): LinkMode {
+  return flags.skip ? "skip" : "overwrite";
 }
 
 export const applyCommand = buildCommand<ApplyFlags, [], BotuContext>({
@@ -45,8 +45,8 @@ export const applyCommand = buildCommand<ApplyFlags, [], BotuContext>({
   parameters: {
     flags: {
       dryRun: { kind: "boolean", optional: true, brief: "Show what would change; change nothing" },
-      force: { kind: "boolean", optional: true, brief: "Overwrite conflicting targets" },
-      skip: { kind: "boolean", optional: true, brief: "Skip conflicting targets" },
+      force: { kind: "boolean", optional: true, brief: "Overwrite conflicting targets (default)" },
+      skip: { kind: "boolean", optional: true, brief: "Skip conflicting targets instead of overwriting" },
       resume: { kind: "boolean", optional: true, brief: "Continue an interrupted apply (skip done steps)" },
       only: onlyFlag,
       profile: profileFlag,
