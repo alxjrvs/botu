@@ -78,6 +78,16 @@ test("link: linkMode skip leaves a foreign file at dst untouched", async () => {
   expect(sb.out()).toContain("exists but is not our symlink — skipped");
 });
 
+test("link: --dry-run warns it would overwrite a foreign file, and changes nothing", async () => {
+  const sb = await sandbox(`[[section]]\nname = "Shell"\nlink = [{ src = ".zshrc", dst = "~/.zshrc" }]\n`);
+  await writeFile(join(sb.repo, ".zshrc"), "z\n");
+  await writeFile(join(sb.home, ".zshrc"), "pre-existing, not ours\n");
+  expect(await reconcile("apply", sb.ctx, { dryRun: true })).toBe(0);
+  expect(sb.out()).toContain("would overwrite an existing file");
+  expect(await linkTarget(join(sb.home, ".zshrc"))).toBeUndefined();
+  expect(await readFile(join(sb.home, ".zshrc"), "utf8")).toBe("pre-existing, not ours\n");
+});
+
 test("link: fix always overwrites a foreign file regardless of linkMode", async () => {
   const sb = await sandbox(`[[section]]\nname = "Shell"\nlink = [{ src = ".zshrc", dst = "~/.zshrc" }]\n`);
   await writeFile(join(sb.repo, ".zshrc"), "z\n");
