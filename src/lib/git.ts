@@ -86,14 +86,23 @@ export function hasUnpushedCommits(dir: string, env: Env): boolean {
   return r.code === 0 && (Number.parseInt(r.stdout, 10) || 0) > 0;
 }
 
+// One-line `<sha> <subject>` per commit hasUnpushedCommits flagged — for a guard's
+// error message, so discarding them is an informed choice rather than a leap of faith.
+export function unpushedCommits(dir: string, env: Env): string[] {
+  const r = captureArgv(["git", "log", "--oneline", "HEAD", "--not", "--remotes"], env, { cwd: dir });
+  return r.code === 0 && r.stdout.length > 0 ? r.stdout.split("\n") : [];
+}
+
 export function headSha(dir: string, env: Env): string | undefined {
   const r = captureArgv(["git", "rev-parse", "HEAD"], env, { cwd: dir });
   return r.code === 0 ? r.stdout : undefined;
 }
 
-export function revListCount(dir: string, range: string, env: Env): number {
+// undefined signals the git command itself failed — distinct from a genuine 0, so a
+// caller can't mistake a broken clone/range for "no drift" (see sync.ts's verify path).
+export function revListCount(dir: string, range: string, env: Env): number | undefined {
   const r = captureArgv(["git", "rev-list", "--count", range], env, { cwd: dir });
-  return r.code === 0 ? Number.parseInt(r.stdout, 10) || 0 : 0;
+  return r.code === 0 ? Number.parseInt(r.stdout, 10) || 0 : undefined;
 }
 
 export function diffNameOnly(dir: string, range: string, env: Env): string[] {

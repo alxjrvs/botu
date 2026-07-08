@@ -160,6 +160,34 @@ test("verify reports commits-behind as drift without pulling", async () => {
   expect(await readFile(join(repo, "botufile.toml"), "utf8")).toBe(before);
 });
 
+test("verify warns on a dirty tree even when commit history matches origin", async () => {
+  const origin = await originFixture();
+  const env = { XDG_STATE_HOME: await base(), NO_COLOR: "1" };
+  const repo = await linkRemoteConfigRepo(env, origin);
+  await writeFile(join(repo, "scratch.txt"), "uncommitted local edit\n");
+
+  const { ctx, out } = ctxFor(env, repo);
+  const rc = await reconcile("verify", ctx, {});
+  expect(out()).toContain("uncommitted local changes");
+  expect(out()).not.toContain("up to date with origin");
+  expect(rc).toBe(2);
+});
+
+test("verify warns on committed-but-unpushed local commits even when behind-count is 0", async () => {
+  const origin = await originFixture();
+  const env = { XDG_STATE_HOME: await base(), NO_COLOR: "1" };
+  const repo = await linkRemoteConfigRepo(env, origin);
+  configureIdentity(repo);
+  await writeFile(join(repo, "botufile.toml"), `[[section]]\nname = "x"\n[[section]]\nname = "local"\n`);
+  commitAll(repo, "local edit");
+
+  const { ctx, out } = ctxFor(env, repo);
+  const rc = await reconcile("verify", ctx, {});
+  expect(out()).toContain("not pushed to origin");
+  expect(out()).not.toContain("up to date with origin");
+  expect(rc).toBe(2);
+});
+
 test("apply pulls and reports what changed", async () => {
   const origin = await originFixture();
   const env = { XDG_STATE_HOME: await base(), NO_COLOR: "1" };
@@ -298,7 +326,24 @@ test("a pinned ref is reported as static, not checked for drift", async () => {
 
 // ---- reset ------------------------------------------------------------------
 
-test("reset discards uncommitted and committed-but-unpushed local changes", async () => {
+test("reset refuses to discard committed-but-unpushed local commits without --force", async () => {
+  const origin = await originFixture();
+  const env = { XDG_STATE_HOME: await base(), NO_COLOR: "1" };
+  const repo = await linkRemoteConfigRepo(env, origin);
+
+  await writeFile(join(repo, "botufile.toml"), `[[section]]\nname = "x"\n[[section]]\nname = "local"\n`);
+  commitAll(repo, "local edit");
+
+  const { ctx, out } = ctxFor(env, repo);
+  const rc = await resetConfigRepo(ctx);
+  expect(rc).toBe(1);
+  expect(out()).toContain("local edit"); // the at-risk commit is listed
+  expect(out()).toContain("--force");
+  // refused, so nothing was actually discarded
+  expect(await readFile(join(repo, "botufile.toml"), "utf8")).toContain('name = "local"');
+});
+
+test("reset --force discards uncommitted and committed-but-unpushed local changes", async () => {
   const origin = await originFixture();
   const env = { XDG_STATE_HOME: await base(), NO_COLOR: "1" };
   const repo = await linkRemoteConfigRepo(env, origin);
@@ -310,12 +355,24 @@ test("reset discards uncommitted and committed-but-unpushed local changes", asyn
   await writeFile(join(repo, "untracked.txt"), "oops\n");
 
   const { ctx, out } = ctxFor(env, repo);
-  const rc = await resetConfigRepo(ctx);
+  const rc = await resetConfigRepo(ctx, { force: true });
   expect(rc).toBe(0);
   expect(out()).toContain("reset");
   expect(await readFile(join(repo, "botufile.toml"), "utf8")).toBe(
     await readFile(join(origin, "botufile.toml"), "utf8"),
   );
+  expect(await pathExists(join(repo, "untracked.txt"))).toBe(false);
+});
+
+test("reset discards a dirty-but-uncommitted tree with no unpushed commits, no --force needed", async () => {
+  const origin = await originFixture();
+  const env = { XDG_STATE_HOME: await base(), NO_COLOR: "1" };
+  const repo = await linkRemoteConfigRepo(env, origin);
+
+  await writeFile(join(repo, "untracked.txt"), "oops\n"); // uncommitted only — not "unpushed work"
+
+  const { ctx } = ctxFor(env, repo);
+  expect(await resetConfigRepo(ctx)).toBe(0);
   expect(await pathExists(join(repo, "untracked.txt"))).toBe(false);
 });
 
@@ -333,7 +390,8 @@ test("reset on a pinned clone goes back to the pinned ref, not origin's current 
   commitAll(repo, "local edit");
 
   const { ctx } = ctxFor(env, repo);
-  expect(await resetConfigRepo(ctx)).toBe(0);
+  // a committed-but-unpushed local commit on the pinned clone too — needs --force
+  expect(await resetConfigRepo(ctx, { force: true })).toBe(0);
   // back to the pin, not origin's now-two-commits-ahead tip
   expect(await readFile(join(repo, "botufile.toml"), "utf8")).toBe(`[[section]]\nname = "x"\n`);
 });

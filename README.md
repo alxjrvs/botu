@@ -29,6 +29,7 @@ botu verify --json           # … as a structured drift report
 botu fix                     # repair drift
 botu push                    # push the config repo's local commits upstream
 botu reset                   # discard local changes in the config repo, reset to origin
+botu reset --force           # …including commits no remote has (refused otherwise)
 botu rollback                # undo the last apply (restores backed-up files)
 botu validate                # parse + schema-check the botufile; change nothing
 botu doctor                  # check botu's own preconditions (tools, keychain, state)
@@ -42,8 +43,9 @@ Config is repo-only: `link`/`init` always clone a remote (`owner/repo`,
 `github:owner/repo`, a git URL, optionally `@ref`) into a botu-managed cache dir —
 never an arbitrary local folder. `apply`/`fix` pull the config repo first (rebasing
 any local edits on top via `--autostash`, or committing them first with
-`--commit`) and report what moved; `verify` reports "N commits behind" as drift
-without pulling. A rebase conflict is reported but never blocks reconciling from
+`--commit`) and report what moved; `verify` reports "N commits behind" as drift,
+plus separate warnings for uncommitted or unpushed local changes, without pulling.
+A rebase conflict is reported but never blocks reconciling from
 the local clone as-is. Auth is whatever git/SSH already works in your shell. A
 conflicting (non-botu-owned) file at a link's destination is **overwritten by
 default** — pass `--skip` to leave it alone instead.
