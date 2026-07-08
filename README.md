@@ -17,33 +17,36 @@ portals to your machine's ideal state, and to your code. You drive it with the
 ## Quickstart
 
 ```sh
-botu init ~/dotfiles     # record your dotfiles repo (+ writes botuinit.sh there)
-botu link ~/dotfiles     # … record the repo only (init without the bootstrap)
-botu apply               # symlink/copy/install/run from its botufile.toml
-botu apply --dry-run     # preview what apply would change; change nothing
-botu apply --skip        # skip conflicting targets instead of overwriting them
-botu apply --hard        # discard local dotfiles-repo changes; reset --hard to remote
-botu apply --commit      # commit local dotfiles-repo changes, then pull --rebase
-botu commit              # commit uncommitted local changes in the dotfiles repo
-botu verify              # check for drift (exit 0 ok / 2 warn / 1 fail)
-botu verify --json       # … as a structured drift report
-botu fix                 # repair drift
-botu rollback            # undo the last apply (restores backed-up files)
-botu validate            # parse + schema-check the botufile; change nothing
-botu doctor              # check botu's own preconditions (tools, keychain, state)
+botu init alxjrvs/dotfiles   # clone your remote dotfiles repo and apply it — bootstrap
+botu link alxjrvs/dotfiles   # … clone + record only (init without the apply)
+botu apply                   # symlink/copy/install/run from its botufile.toml
+botu apply --dry-run         # preview what apply would change; change nothing
+botu apply --skip            # skip conflicting targets instead of overwriting them
+botu apply --commit          # commit local config-repo changes before pulling
+botu commit                  # commit local changes in the config repo directly
+botu verify                  # check for drift (exit 0 ok / 2 warn / 1 fail)
+botu verify --json           # … as a structured drift report
+botu fix                     # repair drift
+botu push                    # push the config repo's local commits upstream
+botu reset                   # discard local changes in the config repo, reset to origin
+botu rollback                # undo the last apply (restores backed-up files)
+botu validate                # parse + schema-check the botufile; change nothing
+botu doctor                  # check botu's own preconditions (tools, keychain, state)
 
 botu code init ~/Code    # record your code dir
 botu code claude         # symlink every repo into one dir, open `claude agents` there
 botu code cmux           # one cmux workspace per repo
 ```
 
-`apply`/`sync` first bring the dotfiles repo's own git state in line with its
-remote (a no-op if it's not a git repo, or has no upstream configured): by
-default they stash any uncommitted local edits, `pull --rebase`, then pop the
-stash back on top; `--commit` commits local edits first instead of stashing
-them; `--hard` discards local commits and edits entirely and resets to match
-the remote. A conflicting (non-botu-owned) file at a link's destination is
-**overwritten by default** — pass `--skip` to leave it alone instead.
+Config is repo-only: `link`/`init` always clone a remote (`owner/repo`,
+`github:owner/repo`, a git URL, optionally `@ref`) into a botu-managed cache dir —
+never an arbitrary local folder. `apply`/`fix` pull the config repo first (rebasing
+any local edits on top via `--autostash`, or committing them first with
+`--commit`) and report what moved; `verify` reports "N commits behind" as drift
+without pulling. A rebase conflict is reported but never blocks reconciling from
+the local clone as-is. Auth is whatever git/SSH already works in your shell. A
+conflicting (non-botu-owned) file at a link's destination is **overwritten by
+default** — pass `--skip` to leave it alone instead.
 
 ## The `botufile.toml`
 

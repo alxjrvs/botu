@@ -2,7 +2,7 @@
 // and crawl it for git repos using the leaf rule (a repo is a leaf; don't descend
 // into it or into worktrees). Ports engine/commands/code's _resolve_code + _repos.
 import type { Dirent } from "node:fs";
-import { mkdir, readdir, readFile, rm, stat, symlink } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { botuStateDir, type Env } from "./state.ts";
 
@@ -76,6 +76,36 @@ export interface FarmPlan {
 
 export function agentsFarmDir(env: Env): string {
   return join(env.HOME ?? "", ".local", "code");
+}
+
+// `claude agents` records the cwd it launched in as a project under `projects` in
+// ~/.claude.json, so opening the agent view from the farm leaves a ghost
+// `~/.local/code` entry that clutters Claude's project/agent-view list. The farm is
+// a generated, disposable index — never a workspace you'd want remembered — so prune
+// that one key after the view exits. Best-effort and surgical: the file is shared
+// with live Claude processes (background agents keep writing it), so we re-read
+// immediately before writing, delete only the farm key, write via temp+rename so a
+// reader never sees a half-written file, and swallow every error rather than surface
+// a write race. Returns whether a key was actually removed (for the caller's log).
+export function claudeConfigPath(env: Env): string {
+  return join(env.HOME ?? "", ".claude.json");
+}
+
+export async function pruneFarmProject(env: Env, farm: string): Promise<boolean> {
+  if (!env.HOME) return false;
+  const path = claudeConfigPath(env);
+  try {
+    const data = JSON.parse(await readFile(path, "utf8")) as { projects?: Record<string, unknown> };
+    if (!data.projects || !(farm in data.projects)) return false;
+    delete data.projects[farm];
+    // 2-space indent, no trailing newline — matches how Claude itself writes the file.
+    const tmp = `${path}.botu.${process.pid}.tmp`;
+    await writeFile(tmp, JSON.stringify(data, null, 2));
+    await rename(tmp, path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // Map each repo to its basename; the `@<repo>` key is the basename, so two repos

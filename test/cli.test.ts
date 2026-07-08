@@ -54,17 +54,10 @@ test("an unknown command reports an error", async () => {
   expect(buf.err.length).toBeGreaterThan(0);
 });
 
-test("apply --hard --commit are mutually exclusive", async () => {
-  const { buf, proc, ctx } = fakeContext();
-  await run(app, ["apply", "--hard", "--commit"], ctx);
-  expect(buf.err).toContain("mutually exclusive");
-  expect(proc.exitCode).toBe(1);
-});
-
-test("sync routes to apply and accepts --hard", async () => {
+test("sync routes to apply and accepts --commit/-m", async () => {
   const { buf, ctx } = fakeContext();
-  await run(app, ["sync", "--hard"], ctx);
-  // cwd resolves no config, same as plain `apply` — proves the flag parsed, not that
+  await run(app, ["sync", "--commit", "-m", "wip"], ctx);
+  // cwd resolves no config, same as plain `apply` — proves the flags parsed, not that
   // a git sync ran.
   expect(buf.err).toContain("no dotfiles repo");
 });

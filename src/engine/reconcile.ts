@@ -9,11 +9,11 @@ import type { Botufile, Section } from "../config/schema.ts";
 import type { BotuContext } from "../context.ts";
 import { colorEnabled } from "../lib/color.ts";
 import { displayPath, filesEqual, linkTarget, pathExists, rm } from "../lib/fs.ts";
-import { type GitSyncMode, syncRepo } from "../lib/git.ts";
 import { Reporter } from "../lib/reporter.ts";
 import { Journal, newRunId, pruneRuns, readRun } from "./journal.ts";
 import { reconcileSection } from "./registry.ts";
 import { backupsDir, type ManifestEntry, readManifest, writeManifest } from "./state.ts";
+import { syncConfigRepo } from "./sync.ts";
 import type { LinkMode, ReconcileCtx, Verb } from "./types.ts";
 
 // Version of the `--json` report envelope. Bump when its shape changes so a script
@@ -27,8 +27,9 @@ export interface ReconcileOptions {
   readonly json?: boolean;
   readonly resume?: boolean;
   readonly profiles?: string[];
-  // Only consulted for verb "apply" (sync/update alias to it too). Default: "pull".
-  readonly gitSync?: GitSyncMode;
+  // Only consulted for verb "apply"/"fix" (sync/update alias to apply too): commit
+  // local config-repo changes before pulling, instead of the default autostash.
+  readonly commit?: boolean;
   readonly commitMessage?: string;
 }
 
@@ -136,20 +137,11 @@ export async function reconcile(verb: Verb, ctx: BotuContext, opts: ReconcileOpt
     report.fail("no dotfiles repo found — run `botu init`");
     return finish();
   }
-
   const dryRun = opts.dryRun ?? false;
-
-  // Bring the repo's own git state in line with its remote before reading the botufile
-  // off disk, so a pulled change to it takes effect the same run (verify/uninstall never
-  // touch the repo's git state — only apply/update, which alias to verb "apply").
-  if (verb === "apply") {
-    const sync = syncRepo(repo, ctx.env, opts.gitSync ?? "pull", report, {
-      commitMessage: opts.commitMessage,
-      dryRun,
-    });
-    if (!sync.ok) return finish();
-  }
-
+  await syncConfigRepo(repo, ctx.env, report, verb, dryRun, {
+    commit: opts.commit,
+    commitMessage: opts.commitMessage,
+  });
   let config: Botufile;
   try {
     config = await loadConfig(repo);
