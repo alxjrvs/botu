@@ -3,7 +3,7 @@
 // bats behavioral oracle (verbs/exit-codes/--only/copy-vs-link/hook).
 import { expect, test } from "bun:test";
 import { realpathSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BotuContext } from "../src/context.ts";
@@ -183,4 +183,44 @@ test("hook runs a TS resource module with its inputs", async () => {
   );
   expect(await reconcile("apply", sb.ctx, {})).toBe(0);
   expect(sb.out()).toContain("hello world");
+});
+
+// A fake `brew` on PATH that just logs its argv — real `brew bundle` isn't installable
+// in CI, but the argv it's invoked with is exactly the behavior under test: plain
+// apply must not silently upgrade outdated formulae (Homebrew Bundle's own default),
+// and `update`/`apply --upgrade` must be the one opt-in path that does.
+async function fakeBrew(
+  repo: string,
+  env: Record<string, string | undefined>,
+): Promise<() => Promise<string[]>> {
+  const bin = join(repo, ".fakebin");
+  await mkdir(bin, { recursive: true });
+  const log = join(repo, "brew-calls.log");
+  await writeFile(join(bin, "brew"), '#!/bin/sh\necho "$@" >> "$BREW_CALL_LOG"\nexit 0\n');
+  await chmod(join(bin, "brew"), 0o755);
+  env.PATH = `${bin}:${process.env.PATH ?? ""}`;
+  env.BREW_CALL_LOG = log;
+  return async () => {
+    const text = await readFile(log, "utf8").catch(() => "");
+    return text
+      .trim()
+      .split("\n")
+      .filter((l) => l.length > 0);
+  };
+}
+
+test("brewfile: apply passes --no-upgrade; update/apply --upgrade omits it", async () => {
+  const sb = await sandbox(`[[section]]\nname = "Pkg"\nbrewfile = "Brewfile"\n`);
+  await writeFile(join(sb.repo, "Brewfile"), "");
+  const calls = await fakeBrew(sb.repo, sb.ctx.env as Record<string, string | undefined>);
+
+  expect(await reconcile("apply", sb.ctx, {})).toBe(0);
+  expect(await reconcile("apply", sb.ctx, { upgrade: true })).toBe(0);
+  expect(await reconcile("verify", sb.ctx, {})).toBe(0);
+
+  const argvLines = await calls();
+  expect(argvLines).toHaveLength(3);
+  expect(argvLines[0]).toContain("--no-upgrade"); // plain apply
+  expect(argvLines[1]).not.toContain("--no-upgrade"); // apply --upgrade (= update)
+  expect(argvLines[2]).toContain("--no-upgrade"); // verify mirrors apply's default
 });

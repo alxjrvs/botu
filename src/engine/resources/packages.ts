@@ -13,21 +13,35 @@ export function reconcileBrewfile(file: string, ctx: ReconcileCtx): void {
   // argv array, not a shell string: a repo path with a space or quote is just an
   // argument here, never re-parsed by sh.
   const path = join(ctx.repo, file);
+  // Homebrew Bundle upgrades outdated formulae by default — `apply` should only
+  // reconcile declared state, not silently upgrade packages as a side effect, so it
+  // opts out unless the caller asked for upgrades (`update` = apply --upgrade). Casks
+  // are unaffected by this flag: Bundle only upgrades a cask when its Brewfile entry
+  // sets `greedy: true`, upgrade or not.
+  const noUpgrade = ctx.upgrade ? [] : ["--no-upgrade"];
   switch (ctx.verb) {
     case "apply":
     case "fix": {
       if (ctx.dryRun) {
-        report.plan(`would run: brew bundle --file=${path}`);
+        report.plan(`would run: brew bundle --file=${path}${ctx.upgrade ? "" : " --no-upgrade"}`);
         return;
       }
-      if (runArgv(["brew", "bundle", `--file=${path}`], ctx.env, { quietStdout: ctx.json }).code === 0)
+      if (
+        runArgv(["brew", "bundle", `--file=${path}`, ...noUpgrade], ctx.env, { quietStdout: ctx.json })
+          .code === 0
+      )
         report.ok("brew bundle satisfied");
       else report.fail("brew bundle failed");
       return;
     }
     case "verify": {
+      // Mirrors apply's --no-upgrade gate: otherwise a plain `verify` would flag
+      // merely-outdated (but still declared) formulae as drift that `botu apply`
+      // then refuses to fix, since apply itself no longer upgrades by default.
       if (
-        runArgv(["brew", "bundle", "check", `--file=${path}`], ctx.env, { quietStdout: ctx.json }).code === 0
+        runArgv(["brew", "bundle", "check", `--file=${path}`, ...noUpgrade], ctx.env, {
+          quietStdout: ctx.json,
+        }).code === 0
       )
         report.ok("brew bundle satisfied");
       else report.warn("brew bundle missing deps — run: botu apply");

@@ -31,6 +31,10 @@ export interface ReconcileOptions {
   // local config-repo changes before pulling, instead of the default autostash.
   readonly commit?: boolean;
   readonly commitMessage?: string;
+  // Only consulted for verb "apply"/"fix": also upgrade outdated brewfile formulae
+  // (what `update` sets). Default false — plain apply reconciles declared state,
+  // it doesn't force package upgrades as a side effect.
+  readonly upgrade?: boolean;
 }
 
 // Merge a partial run's declared set into the prior manifest (union by dst, declared
@@ -179,6 +183,7 @@ export async function reconcile(verb: Verb, ctx: BotuContext, opts: ReconcileOpt
     dryRun,
     json,
     linkMode: opts.linkMode ?? "overwrite",
+    upgrade: opts.upgrade ?? false,
     env: ctx.env,
     report,
     declared: [],
