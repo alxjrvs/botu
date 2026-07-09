@@ -34,6 +34,7 @@ type ApplyFlags = {
   profile?: string[];
   commit?: boolean;
   message?: string;
+  upgrade?: boolean;
 };
 
 // overwrite is the default (and what --force explicitly asks for too) — --skip is
@@ -61,6 +62,11 @@ export const applyCommand = buildCommand<ApplyFlags, [], BotuContext>({
         optional: true,
         brief: 'Commit message for --commit (default: "botu: local changes")',
       },
+      upgrade: {
+        kind: "boolean",
+        optional: true,
+        brief: "Also upgrade outdated brewfile formulae (what `botu update` runs)",
+      },
       only: onlyFlag,
       profile: profileFlag,
       json: jsonFlag,
@@ -77,6 +83,7 @@ export const applyCommand = buildCommand<ApplyFlags, [], BotuContext>({
       linkMode: linkModeOf(flags),
       commit: flags.commit,
       commitMessage: flags.message,
+      upgrade: flags.upgrade,
     });
   },
 });
@@ -119,6 +126,7 @@ export const updateCommand = buildCommand<OnlyFlags, [], BotuContext>({
       only: flags.only,
       json: flags.json,
       profiles: flags.profile,
+      upgrade: true,
     });
   },
 });

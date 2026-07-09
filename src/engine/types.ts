@@ -14,6 +14,11 @@ export interface ReconcileCtx {
   // stdout so the only thing there is the structured envelope.
   readonly json: boolean;
   readonly linkMode: LinkMode;
+  // Gates brewfile's `--no-upgrade`: apply/fix reconcile declared state only, `update`
+  // (apply --upgrade) opts into upgrading outdated formulae too. Casks are unaffected
+  // either way — Homebrew Bundle only upgrades a cask when its Brewfile entry sets
+  // `greedy: true`, regardless of this flag.
+  readonly upgrade: boolean;
   readonly env: Record<string, string | undefined>;
   readonly report: Reporter;
   // Destinations botu owns this run — populated as handlers run (drives orphan
