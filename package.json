@@ -1,6 +1,6 @@
 {
   "name": "botu",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "BoomTube — a workspace manager (executable: botu). Provision your machine and code workspaces from a declarative botufile.toml (apply/verify/fix), open portals to your code, and get out of the way so you can work.",
   "type": "module",
   "private": true,

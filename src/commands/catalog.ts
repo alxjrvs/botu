@@ -1,30 +1,26 @@
-// Single source of truth for botu's command names + one-line briefs. The @stricli
-// route map (cli.ts) is the real dispatch; this list drives the things that can't
-// introspect that map — the pre-Stricli dispatch guard (index.ts), shell completions,
-// and the man page — so they never drift from the route map. `mcp` is a raw passthrough
-// (handled before Stricli), not a route, but it is a real command, so it lives here too.
-// There are no aliases: one canonical name per command, the single way in.
+// Command names + one-line briefs, DERIVED from the @stricli route map (cli.ts) — not a
+// hand-maintained table. Completions, the man page, and the skill all read from here, so a
+// command's name/brief can never drift from its route: the route *is* the source of truth.
+//
+// Lazy on purpose. These are functions, not top-level consts, because cli.ts imports the
+// generator commands (completions/man/skill) that import this module — a cycle. Reading
+// `routes` only at call time (help/generator execution, long after module load) lets the
+// cycle resolve cleanly; a top-level `routes.getAllEntries()` here would run mid-load,
+// before cli.ts has assigned `routes`.
+import { routes } from "../cli.ts";
+
 export interface CommandInfo {
   readonly name: string;
   readonly brief: string;
 }
 
-export const COMMANDS: readonly CommandInfo[] = [
-  { name: "apply", brief: "Reconcile your machine from the botufile — make it so" },
-  { name: "verify", brief: "Check for drift (exit 0 ok / 2 warn / 1 fail)" },
-  { name: "repair", brief: "Repair drift (apply, overwriting conflicts)" },
-  { name: "uninstall", brief: "Remove everything botu installed" },
-  { name: "source", brief: "Set or operate the config repo (set | diff | commit | push | reset)" },
-  { name: "where", brief: "Print a resolved botu path: config | code | engine" },
-  { name: "rollback", brief: "Undo the most recent apply" },
-  { name: "upgrade", brief: "Fetch the latest release and replace the binary in place" },
-  { name: "validate", brief: "Parse + schema-check the botufile; change nothing" },
-  { name: "doctor", brief: "Check botu's own preconditions (tools, keychain, state)" },
-  { name: "code", brief: "Open portals to your code workspaces" },
-  { name: "mcp", brief: "Register an MCP server the 1Password-native way" },
-  { name: "completions", brief: "Emit a shell completion script (bash | zsh | fish)" },
-  { name: "man", brief: "Emit the botu(1) man page (roff)" },
-  { name: "skill", brief: "Emit a Claude Code SKILL.md for driving botu (agentic use)" },
-] as const;
+export function commandList(): readonly CommandInfo[] {
+  return routes
+    .getAllEntries()
+    .filter((e) => !e.hidden)
+    .map((e) => ({ name: e.name.original, brief: e.target.brief }));
+}
 
-export const COMMAND_NAMES: readonly string[] = COMMANDS.map((c) => c.name);
+export function commandNames(): readonly string[] {
+  return commandList().map((c) => c.name);
+}
