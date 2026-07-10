@@ -1,14 +1,16 @@
 name: pages
 
-# Deploy the self-contained docs site (site/index.html) to GitHub Pages. The site
-# is static and dependency-free — matching botu's own ethos — so there is no build
-# step: we upload site/ verbatim and let deploy-pages publish it. Enable Pages with
-# "GitHub Actions" as the source (Settings → Pages, or the Pages API build_type=workflow)
-# for this to have somewhere to publish to.
+# Deploy the docs site to GitHub Pages. The landing page (site/index.html) and its
+# stylesheet (site/styles.css) are hand-authored; the doc pages (spec/migration/
+# retrospective) are generated from the repo's own markdown by `bun run site/build.ts`
+# — so a docs edit is a markdown edit, no HTML by hand. We build, then upload site/.
+# Enable Pages with "GitHub Actions" as the source (Settings → Pages, or the Pages API
+# build_type=workflow) for this to have somewhere to publish to.
 on:
   push:
     branches: [main]
-    paths: ["site/**", ".github/workflows/pages.yml"]
+    # Rebuild when the site itself changes, or when any doc it renders changes.
+    paths: ["site/**", "SPEC.md", "docs/**", ".github/workflows/pages.yml"]
   workflow_dispatch: # manual re-publish
 
 # Least privilege for the deploy: read the repo, mint the Pages OIDC token, write Pages.
@@ -30,6 +32,12 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - name: Build doc pages from markdown
+        run: bun run site/build.ts
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

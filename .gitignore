@@ -13,3 +13,10 @@ build/
 # discovery from treating those copies as competing nested root configs ("Found a
 # nested root configuration" errors breaking `bun run lint` from the main tree).
 .claude/worktrees/
+
+# Docs-site pages generated from repo markdown by `bun run site/build.ts`
+# (built fresh in the Pages workflow). Sources are site/index.html + site/styles.css
+# + site/build.ts; these HTML files are build artifacts.
+site/spec.html
+site/migration.html
+site/retrospective.html

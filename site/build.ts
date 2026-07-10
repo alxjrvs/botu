@@ -1,0 +1,131 @@
+// The docs-site generator. Turns the repo's own markdown (SPEC.md, the migration
+// prompt, the design retrospective) into Kirby-styled HTML pages that share the
+// landing page's design system. "Operate as a docs site" = add a markdown file
+// here and it becomes a page — no hand-authored HTML per doc.
+//
+// The shared chrome (SVG krackle symbols, footer, favicon, copy-to-clipboard
+// script) is lifted verbatim from site/index.html so the hand-authored landing
+// page stays the single source of truth for it — edit index.html, every page
+// follows. Only the <head> title/description and the active nav item vary per
+// page. Run: `bun run site/build.ts` (also runs in the Pages workflow).
+//
+// Output HTML is written next to index.html and is git-ignored — it is a build
+// artifact, regenerated on every deploy.
+
+import { marked } from "marked";
+import { readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+const SITE = import.meta.dir; // .../site
+const ROOT = resolve(SITE, ".."); // repo root
+
+// --- lift the shared chrome out of the landing page (single source of truth) ---
+const index = readFileSync(resolve(SITE, "index.html"), "utf8");
+const grab = (re: RegExp, what: string): string => {
+  const m = index.match(re);
+  if (!m) throw new Error(`build: could not find ${what} in index.html`);
+  return m[0];
+};
+const symbolsSvg = grab(/<svg width="0" height="0"[\s\S]*?<\/svg>/, "SVG symbol defs");
+const footerHtml = grab(/<footer class="cosmic section">[\s\S]*?<\/footer>/, "footer");
+const copyScript = grab(/<script>[\s\S]*?<\/script>/, "copy-to-clipboard script");
+const faviconLink = grab(/<link rel="icon"[^>]*>/, "favicon link");
+
+// --- the pages: one entry per markdown doc ---
+type Page = { slug: string; src: string; title: string; desc: string; caption: string };
+const PAGES: Page[] = [
+  {
+    slug: "spec",
+    src: "SPEC.md",
+    title: "The Design Spec — botu",
+    desc: "BoomTube's design of record: the reconcile model, config-repo git sync, the typed botufile.toml schema, the hook extension contract, transaction/journal, and the stack.",
+    caption: "The blueprint of the Fourth World!",
+  },
+  {
+    slug: "migration",
+    src: "docs/migration-prompt.md",
+    title: "Migrate a bash botufile to botufile.toml — botu",
+    desc: "A prompt that converts a legacy bash botufile to botu's typed botufile.toml and ports bash hooks to TypeScript — mapping rules, hook contract, and how to verify the result.",
+    caption: "Crossing over from the old world!",
+  },
+  {
+    slug: "retrospective",
+    src: "docs/grander.md",
+    title: "The History — botu",
+    desc: "A record of the four structural 'grander changes' explored on the old bash engine and where each one shipped in the TypeScript rewrite.",
+    caption: "How the saga was decided!",
+  },
+];
+
+// Rewrite in-repo .md links to their built pages, and wrap tables so they scroll
+// inside their own box instead of the page. (Trusted, first-party markdown — no
+// sanitization needed.)
+const rewrite = (html: string): string =>
+  html
+    .replace(/href="[^"]*?SPEC\.md"/g, 'href="spec.html"')
+    .replace(/href="[^"]*?migration-prompt\.md"/g, 'href="migration.html"')
+    .replace(/href="[^"]*?grander\.md"/g, 'href="retrospective.html"')
+    .replace(/href="[^"]*?README\.md"/g, 'href="index.html"')
+    .replace(/<table>/g, '<div class="tablewrap"><table>')
+    .replace(/<\/table>/g, "</table></div>");
+
+const navItem = (href: string, slug: string, label: string, active: string): string =>
+  `<a href="${href}"${active === slug ? ' aria-current="page"' : ""}>${label}</a>`;
+
+const masthead = (active: string): string => `<header class="masthead">
+  <div class="wrap">
+    <a class="logo" href="index.html">BOTU<span class="bang">!</span></a>
+    <nav aria-label="Pages">
+      ${navItem("index.html", "home", "Home", active)}
+      ${navItem("spec.html", "spec", "Spec", active)}
+      ${navItem("migration.html", "migration", "Migrate", active)}
+      ${navItem("retrospective.html", "retrospective", "History", active)}
+    </nav>
+    <a class="btn gold" href="https://github.com/alxjrvs/botu">Source</a>
+  </div>
+</header>`;
+
+const escapeAttr = (s: string): string => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+
+const render = (p: Page): string => {
+  const md = readFileSync(resolve(ROOT, p.src), "utf8");
+  const body = rewrite(marked.parse(md, { gfm: true, async: false }) as string);
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${p.title}</title>
+<meta name="description" content="${escapeAttr(p.desc)}">
+${faviconLink}
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+${symbolsSvg}
+${masthead(p.slug)}
+<main id="main" class="section cosmic docmain">
+  <div class="docwrap">
+    <div class="doc-hero"><p class="caption">${p.caption}</p></div>
+    <article class="doc panel">
+${body}
+    </article>
+    <nav class="docnav" aria-label="More docs">
+      <a class="btn" href="index.html">&larr; Back to the guide</a>
+      <a class="btn gold" href="https://github.com/alxjrvs/botu">View source on GitHub</a>
+    </nav>
+  </div>
+</main>
+${footerHtml}
+${copyScript}
+</body>
+</html>
+`;
+};
+
+for (const p of PAGES) {
+  const out = resolve(SITE, `${p.slug}.html`);
+  writeFileSync(out, render(p));
+  console.log(`site: built ${p.slug}.html  ← ${p.src}`);
+}
+console.log(`site: ${PAGES.length} page(s) generated in ${SITE}`);
