@@ -1,0 +1,28 @@
+// `botu diff` — show what `botu commit` would capture in the managed config-repo
+// clone: the working-tree diff against HEAD, plus any untracked new files `git diff`
+// omits. Read-only counterpart to commit.ts/push.ts — it touches nothing, it just
+// saves cd-ing into a cache dir you don't normally think about to inspect it.
+import { readConfigBreadcrumb } from "../config/load.ts";
+import type { BotuContext } from "../context.ts";
+import { diffHead, isClean, untrackedFiles } from "../lib/git.ts";
+
+export async function diffConfigRepo(ctx: BotuContext): Promise<number> {
+  const breadcrumb = await readConfigBreadcrumb(ctx.env);
+  if (!breadcrumb) {
+    ctx.process.stderr.write("botu: no remote config linked — run `botu link <owner/repo>`\n");
+    return 1;
+  }
+  if (isClean(breadcrumb.path, ctx.env)) {
+    ctx.process.stdout.write("botu: no local changes\n");
+    return 0;
+  }
+  // Streams straight to the terminal; the untracked note prints after it because
+  // spawnSync flushes before returning, so the two writes stay in order on fd 1.
+  const result = diffHead(breadcrumb.path, ctx.env);
+  const untracked = untrackedFiles(breadcrumb.path, ctx.env);
+  if (untracked.length > 0) {
+    ctx.process.stdout.write("botu: untracked (new files `botu commit` would add):\n");
+    for (const f of untracked) ctx.process.stdout.write(`  ${f}\n`);
+  }
+  return result.code === 0 ? 0 : 1;
+}

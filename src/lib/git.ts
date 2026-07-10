@@ -3,7 +3,7 @@
 // `botu push` need (ahead/behind, upstream, reachability). Shells out via
 // captureArgv — no libgit2, no GitHub API client; ambient git/SSH auth is whatever
 // already works in the user's shell.
-import { type CaptureResult, captureArgv, type Env } from "./proc.ts";
+import { type CaptureResult, captureArgv, type Env, runArgv, type ShellResult } from "./proc.ts";
 
 export function cloneRepo(url: string, dest: string, env: Env): CaptureResult {
   return captureArgv(["git", "clone", url, dest], env);
@@ -107,6 +107,23 @@ export function revListCount(dir: string, range: string, env: Env): number | und
 
 export function diffNameOnly(dir: string, range: string, env: Env): string[] {
   const r = captureArgv(["git", "diff", "--name-only", range], env, { cwd: dir });
+  return r.code === 0 && r.stdout.length > 0 ? r.stdout.split("\n") : [];
+}
+
+// Stream the working-tree diff against HEAD straight to the caller's terminal (like a
+// `run` step / hook — inherited stdout, so git colors and pages it exactly as a bare
+// `git diff` would, with nothing buffered in memory). Covers both staged and unstaged
+// edits to tracked files; untracked files never appear in `git diff`, so callers list
+// those separately via untrackedFiles.
+export function diffHead(dir: string, env: Env): ShellResult {
+  return runArgv(["git", "diff", "HEAD"], env, { cwd: dir });
+}
+
+// Paths git isn't tracking yet — the new files `git diff` omits but `botu commit`
+// (git add -A) would capture. Mirrors the `--others` half of the porcelain status so a
+// `botu diff` doesn't silently hide a freshly added base file.
+export function untrackedFiles(dir: string, env: Env): string[] {
+  const r = captureArgv(["git", "ls-files", "--others", "--exclude-standard"], env, { cwd: dir });
   return r.code === 0 && r.stdout.length > 0 ? r.stdout.split("\n") : [];
 }
 

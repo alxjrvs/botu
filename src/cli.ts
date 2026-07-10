@@ -6,6 +6,7 @@ import { buildApplication, buildRouteMap } from "@stricli/core";
 import { codeRouteMap } from "./commands/code.ts";
 import { commitCommand } from "./commands/commit.ts";
 import { completionsCommand } from "./commands/completions.ts";
+import { diffCommand } from "./commands/diff.ts";
 import { doctorCommand } from "./commands/doctor.ts";
 import { initCommand } from "./commands/init.ts";
 import { linkCommand } from "./commands/link.ts";
@@ -35,6 +36,7 @@ const routes = buildRouteMap({
     update: updateCommand,
     uninstall: uninstallCommand,
     commit: commitCommand,
+    diff: diffCommand,
     push: pushCommand,
     reset: resetCommand,
     where: whereCommand,

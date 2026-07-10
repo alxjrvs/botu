@@ -10,6 +10,7 @@ import { readConfigBreadcrumb } from "../src/config/load.ts";
 import { linkRemoteConfigRepo, parseRemoteRef } from "../src/config/remote.ts";
 import type { BotuContext } from "../src/context.ts";
 import { commitConfigRepo } from "../src/engine/commit.ts";
+import { diffConfigRepo } from "../src/engine/diff.ts";
 import { doctor } from "../src/engine/doctor.ts";
 import { pushConfigRepo } from "../src/engine/push.ts";
 import { reconcile } from "../src/engine/reconcile.ts";
@@ -463,6 +464,53 @@ test("commit reports nothing to commit on a clean tree", async () => {
 test("commit fails cleanly when no remote config is linked", async () => {
   const { ctx, out } = ctxFor({ XDG_STATE_HOME: await base(), NO_COLOR: "1" }, await base());
   const rc = await commitConfigRepo(ctx);
+  expect(rc).toBe(1);
+  expect(out()).toContain("no remote config linked");
+});
+
+// ---- diff -----------------------------------------------------------------
+
+test("diff reports no local changes on a clean tree", async () => {
+  const origin = await originFixture();
+  const env = { XDG_STATE_HOME: await base(), NO_COLOR: "1" };
+  const repo = await linkRemoteConfigRepo(env, origin);
+
+  const { ctx, out } = ctxFor(env, repo);
+  const rc = await diffConfigRepo(ctx);
+  expect(rc).toBe(0);
+  expect(out()).toContain("no local changes");
+});
+
+test("diff surfaces an untracked new file the way commit would capture it", async () => {
+  const origin = await originFixture();
+  const env = { XDG_STATE_HOME: await base(), NO_COLOR: "1" };
+  const repo = await linkRemoteConfigRepo(env, origin);
+  await writeFile(join(repo, "scratch.txt"), "local addition\n");
+
+  const { ctx, out } = ctxFor(env, repo);
+  const rc = await diffConfigRepo(ctx);
+  expect(rc).toBe(0);
+  expect(out()).not.toContain("no local changes");
+  expect(out()).toContain("untracked");
+  expect(out()).toContain("scratch.txt");
+});
+
+test("diff does not take the clean path for a modified tracked file", async () => {
+  const origin = await originFixture();
+  const env = { XDG_STATE_HOME: await base(), NO_COLOR: "1" };
+  const repo = await linkRemoteConfigRepo(env, origin);
+  // botufile.toml is tracked (from originFixture) — a content edit is a tracked change.
+  await writeFile(join(repo, "botufile.toml"), `[[section]]\nname = "y"\n`);
+
+  const { ctx, out } = ctxFor(env, repo);
+  const rc = await diffConfigRepo(ctx);
+  expect(rc).toBe(0);
+  expect(out()).not.toContain("no local changes");
+});
+
+test("diff fails cleanly when no remote config is linked", async () => {
+  const { ctx, out } = ctxFor({ XDG_STATE_HOME: await base(), NO_COLOR: "1" }, await base());
+  const rc = await diffConfigRepo(ctx);
   expect(rc).toBe(1);
   expect(out()).toContain("no remote config linked");
 });

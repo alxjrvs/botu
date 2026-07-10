@@ -72,6 +72,7 @@ never blocks reconciling from the last-known-good local clone. A conflicting
 ### Config-repo git, without leaving botu
 
 ```sh
+botu diff               # show uncommitted local changes in the config repo
 botu commit             # commit local changes in the config repo
 botu push               # push the config repo's local commits upstream
 botu reset              # discard local changes, reset to origin
