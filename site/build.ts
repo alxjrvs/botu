@@ -1,5 +1,5 @@
-// The docs-site generator. Turns the repo's own markdown (SPEC.md, the migration
-// prompt) into Kirby-styled HTML pages that share the landing page's design
+// The docs-site generator. Turns the repo's own markdown (SPEC.md) into
+// Kirby-styled HTML pages that share the landing page's design
 // system. "Operate as a docs site" = add a markdown file here and it becomes a
 // page — no hand-authored HTML per doc.
 //
@@ -41,13 +41,6 @@ const PAGES: Page[] = [
     desc: "BoomTube's design of record: the reconcile model, config-repo git sync, the typed botufile.toml schema, the hook extension contract, transaction/journal, and the stack.",
     caption: "The blueprint of the Fourth World!",
   },
-  {
-    slug: "migration",
-    src: "docs/migration-prompt.md",
-    title: "Migrate a bash botufile to botufile.toml — botu",
-    desc: "A prompt that converts a legacy bash botufile to botu's typed botufile.toml and ports bash hooks to TypeScript — mapping rules, hook contract, and how to verify the result.",
-    caption: "Crossing over from the old world!",
-  },
 ];
 
 // Rewrite in-repo .md links to their built pages, and wrap tables so they scroll
@@ -56,7 +49,6 @@ const PAGES: Page[] = [
 const rewrite = (html: string): string =>
   html
     .replace(/href="[^"]*?SPEC\.md"/g, 'href="spec.html"')
-    .replace(/href="[^"]*?migration-prompt\.md"/g, 'href="migration.html"')
     .replace(/href="[^"]*?README\.md"/g, 'href="index.html"')
     .replace(/<table>/g, '<div class="tablewrap"><table>')
     .replace(/<\/table>/g, "</table></div>")
@@ -74,7 +66,6 @@ const masthead = (active: string): string => `<header class="masthead">
       ${navItem("index.html", "home", "Home", active)}
       ${navItem("guide.html", "guide", "Guide", active)}
       ${navItem("spec.html", "spec", "Spec", active)}
-      ${navItem("migration.html", "migration", "Migrate", active)}
     </nav>
     <a class="btn gold" href="https://github.com/alxjrvs/botu">GitHub</a>
   </div>

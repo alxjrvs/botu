@@ -129,10 +129,6 @@ Imperative escapes are `run` steps (a shell command) or a **hook** — a
 express. Multi-machine setups gate sections with `when`, or layer overlay files
 (`botufile.<os|host|profile>.toml`).
 
-Coming from the old bash `botufile`? See
-[`docs/migration-prompt.md`](docs/migration-prompt.md) — a prompt that converts it
-to `botufile.toml` and ports bash hooks to TypeScript.
-
 ## Code portals
 
 `botu code` opens portals to the repos under your code dir (default `~/Code`):

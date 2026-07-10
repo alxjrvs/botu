@@ -140,7 +140,7 @@ src/
     resources/             link · copy · glob · packages · run · hook
     journal.ts state.ts    transaction + on-disk state
     rollback.ts code.ts discovery.ts
-  config/  schema.ts load.ts remote.ts migrate.ts profile.ts
+  config/  schema.ts load.ts remote.ts profile.ts
   lib/     reporter.ts color.ts fs.ts proc.ts git.ts version.ts
 test/                       bun test (unit + sandboxed integration)
 examples/dotfiles/          a runnable botufile.toml example
