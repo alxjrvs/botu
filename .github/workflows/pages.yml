@@ -1,0 +1,46 @@
+name: pages
+
+# Deploy the docs site to GitHub Pages. The landing page (site/index.html) and its
+# stylesheet (site/styles.css) are hand-authored; the doc pages (spec/migration/
+# retrospective) are generated from the repo's own markdown by `bun run site/build.ts`
+# — so a docs edit is a markdown edit, no HTML by hand. We build, then upload site/.
+# Enable Pages with "GitHub Actions" as the source (Settings → Pages, or the Pages API
+# build_type=workflow) for this to have somewhere to publish to.
+on:
+  push:
+    branches: [main]
+    # Rebuild when the site itself changes, or when any doc it renders changes.
+    paths: ["site/**", "SPEC.md", "docs/**", ".github/workflows/pages.yml"]
+  workflow_dispatch: # manual re-publish
+
+# Least privilege for the deploy: read the repo, mint the Pages OIDC token, write Pages.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One in-flight Pages deploy at a time; don't cancel a running publish mid-flight.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - name: Build doc pages from markdown
+        run: bun run site/build.ts
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4
