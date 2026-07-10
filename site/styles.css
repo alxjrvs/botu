@@ -14,6 +14,9 @@
   --purp:   #7a1fa2;   /* Apokolips purple               */
   --cream:  #f3e9cf;   /* newsprint cream                */
   --text:   #17131f;
+  /* Kirby red is gorgeous as an ink but only ~3.9:1 on cream — below AA. This
+     slightly deeper red clears 4.5:1 for link text; --red stays for fills/art. */
+  --red-text: #c81f17;
 
   --display: Impact, 'Arial Narrow Bold', Haettenschweiler, 'Franklin Gothic Bold', sans-serif;
   --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
@@ -35,7 +38,7 @@ body {
 }
 
 img, svg { max-width: 100%; }
-a { color: var(--red); text-decoration-thickness: 2px; text-underline-offset: 2px; }
+a { color: var(--red-text); text-decoration-thickness: 2px; text-underline-offset: 2px; }
 a:hover { color: var(--mag); }
 
 .skip {
@@ -44,6 +47,24 @@ a:hover { color: var(--mag); }
   border: 3px solid var(--ink); font-weight: 800;
 }
 .skip:focus { left: .5rem; top: .5rem; }
+
+/* visually hidden but exposed to assistive tech (copy-success live region) */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* One brand-consistent focus ring for keyboard users. The design's own 3–5px black
+   borders swallow the UA default ring, and gold surfaces (captions, .btn.gold, the
+   status strip) hide a plain gold ring — so pair a gold outline with an ink halo that
+   reads on cream, on space, and on gold alike. A thick gold-and-ink ring is on-brand. */
+a:focus-visible,
+button:focus-visible,
+[tabindex="0"]:focus-visible {
+  outline: 3px solid var(--gold);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--ink), 4px 4px 0 var(--ink);
+}
 
 .wrap { max-width: 1100px; margin-inline: auto; padding-inline: clamp(14px, 4vw, 34px); }
 
@@ -106,7 +127,9 @@ a:hover { color: var(--mag); }
 .btn:active { transform: translate(2px,2px); box-shadow: 1px 1px 0 var(--ink); }
 .btn.gold { background: var(--gold); color: #000; }
 .btn.gold:hover { color: #000; }
-.btn.blue { background: var(--blue); }
+/* Black on Kirby blue = 5.7:1 (AA); white on it is only 3.7:1. */
+.btn.blue { background: var(--blue); color: #000; }
+.btn.blue:hover { color: #000; }
 
 /* ---------- kirby caption boxes ---------- */
 .caption {
@@ -123,8 +146,11 @@ a:hover { color: var(--mag); }
 .caption.right { transform: rotate(1.2deg); }
 
 /* ---------- panels (inked comic panels on newsprint) ---------- */
+/* color is set explicitly: panels keep a cream background even inside .cosmic
+   sections, so without this they'd inherit .cosmic's cream text — invisible. */
 .panel {
   background-color: var(--cream);
+  color: var(--text);
   background-image: radial-gradient(rgba(0,0,0,.10) 1.3px, transparent 1.4px);
   background-size: 11px 11px;
   border: 4px solid var(--ink);
@@ -138,26 +164,34 @@ a:hover { color: var(--mag); }
 /* tabbed comic panels for the reconcile page */
 .kpanel {
   background-color: var(--cream);
+  color: var(--text);           /* same cream-on-cosmic guard as .panel */
   background-image: radial-gradient(rgba(0,0,0,.10) 1.3px, transparent 1.4px);
   background-size: 11px 11px;
   border: 5px solid var(--ink);
   box-shadow: 10px 10px 0 var(--ink);
   display: flex; flex-direction: column;
 }
+/* header carries the styling; the <h3> inside it (for a correct heading outline)
+   just inherits, so the visual is unchanged. Floor the size at 1.5rem/24px so the
+   white-on-color title always clears WCAG's large-text 3:1 bar. */
 .kpanel > header {
-  font-family: var(--display); text-transform: uppercase;
-  font-size: clamp(1.3rem, 3.4vw, 1.9rem); letter-spacing: .04em;
-  color: #fff; background: var(--red);
+  background: var(--red);
   border-bottom: 5px solid var(--ink);
   padding: .45rem .9rem;
-  text-shadow: 2px 2px 0 var(--ink);
+}
+.kpanel > header h3 {
+  margin: 0;
+  font-family: var(--display); font-weight: 400; text-transform: uppercase;
+  font-size: clamp(1.5rem, 3.4vw, 1.9rem); letter-spacing: .04em;
+  color: #fff; text-shadow: 2px 2px 0 var(--ink);
 }
 .kpanel > header .ep { float: right; font-size: .62em; opacity: .95; }
 .kpanel .kbody { padding: clamp(.9rem, 2.6vw, 1.3rem); flex: 1; }
 .kpanel .kbody > :first-child { margin-top: 0; }
 .kpanel .kbody > :last-child { margin-bottom: 0; }
 .kpanel.blue  > header { background: var(--blue); }
-.kpanel.goldh > header { background: var(--gold); color: #000; text-shadow: none; }
+.kpanel.goldh > header { background: var(--gold); }
+.kpanel.goldh > header h3 { color: #000; text-shadow: none; }
 .kpanel.mag   > header { background: var(--mag); }
 
 /* ---------- code ---------- */
@@ -184,7 +218,9 @@ a:hover { color: var(--mag); }
 .codebox .key { color: var(--gold); }                   /* toml keys  */
 .codebox .s   { color: #7fe3ff; }                       /* strings    */
 .copybtn {
-  position: absolute; top: 8px; right: 8px;
+  /* hung off the box corner like a taped-on sticker, so it can't cover the first
+     code line (which it did on every box whose first line ran long) */
+  position: absolute; top: -12px; right: -10px;
   font-family: var(--mono); font-size: .62rem; font-weight: 700;
   text-transform: uppercase; letter-spacing: .08em;
   background: var(--gold); color: #000;
@@ -265,42 +301,66 @@ code {
   padding-inline: 14%;
 }
 .burst.goldb span { color: #000; }
-.burst.redb  span { color: var(--cream); text-shadow: 1.5px 1.5px 0 var(--ink); }
+/* four-direction ink outline so every Impact stroke edge is inked and legible on red */
+.burst.redb  span { color: var(--cream); text-shadow: -1.5px -1.5px 0 var(--ink), 1.5px -1.5px 0 var(--ink), -1.5px 1.5px 0 var(--ink), 1.5px 1.5px 0 var(--ink); }
 .burst.cyanb span { color: #002; }
 
-/* ---------- hero ---------- */
-.hero { padding-block: clamp(2.6rem, 6vw, 4.6rem) 0; text-align: center; }
-.hero h1 {
-  font-size: clamp(3.2rem, 13vw, 8.4rem);
-  margin: 1.1rem 0 .3rem;
-  color: var(--gold);
-  transform: rotate(-2deg);
-  position: relative; z-index: 2;
+/* ---------- hero (full-screen portal stage + title callout) ---------- */
+.hero { position: relative; text-align: center; }
+
+/* The stage fills the viewport. The portal is drawn WHOLE (meet — never sliced), so
+   the section's cosmic star-field shows through the letterbox margins instead of the
+   art being hard-cropped at any aspect ratio. */
+.hero-stage {
+  position: relative;
+  width: 100vw; margin-inline: calc(50% - 50vw);
+  min-height: 100vh; min-height: 100svh;
+  display: grid; place-items: center;
+  overflow: hidden;
+  padding: clamp(4.5rem, 12vh, 8rem) clamp(14px, 4vw, 34px);
 }
+.hero-stage .portal { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.hero h1 { color: var(--gold); transform: rotate(-2deg); }
 .hero h1 .tube { color: var(--cyan); }
+
+/* sparkles floating in the cosmic margins around the portal */
+.hero-deco { position: absolute; pointer-events: none; }
+
+/* the title callout — a bold Kirby caption card over the portal. Kept mostly opaque so
+   the gold/cyan title stays high-contrast no matter what energy is behind it. */
+.hero-card {
+  position: relative; z-index: 4;
+  max-width: min(92vw, 600px);
+  padding: clamp(1.2rem, 3.5vw, 2.3rem) clamp(1.3rem, 4vw, 2.6rem);
+  background: rgba(11, 10, 18, .86);
+  border: 5px solid var(--ink);
+  box-shadow: 12px 12px 0 var(--ink);
+  -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+}
+.hero-card .caption { transform: rotate(-1.4deg); margin-bottom: .2rem; }
+.hero-card h1 { font-size: clamp(2.8rem, 10vw, 5.4rem); margin: .3rem 0 .5rem; }
+.hero-card .cta { display: flex; flex-wrap: wrap; gap: .7rem .9rem; justify-content: center; margin-top: 1.3rem; }
+
 .kicker {
   font-weight: 800; text-transform: uppercase; letter-spacing: .14em;
-  font-size: clamp(.72rem, 2.4vw, .95rem);
-  color: var(--gold); margin: 0 0 .4rem;
-  /* Lift above the portal (which has a negative top-margin) and ink an outline
-     so the caption stays legible over the bright energy art behind it. */
-  position: relative; z-index: 3;
-  text-shadow: -1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000,
-    1.5px 1.5px 0 #000, 0 2px 0 #000;
+  font-size: clamp(.72rem, 2.4vw, .98rem);
+  color: var(--gold); margin: 0;
 }
 .kicker code { color: var(--cyan); background: rgba(0,0,0,.55); }
-.portal-wrap { position: relative; margin: -1.2rem auto 0; max-width: 880px; }
-.portal-wrap .portal { display: block; width: 100%; height: auto; }
-.burst.b1 { top: 2%; left: -1%; }
-.burst.b2 { bottom: 8%; right: -1%; }
+
+/* a centered content-column so the starburst badges hang near the portal's edges,
+   not flung to the viewport corners */
+.portal-frame { position: absolute; inset: 0; max-width: min(94vw, 1000px); margin: auto; pointer-events: none; z-index: 3; }
+.burst.b1 { top: 6%; left: 0; }
+.burst.b2 { bottom: 8%; right: 0; }
+
+/* long-form lede (concept note, guide intro) */
 .lede {
   max-width: 62ch; margin: 1.4rem auto .4rem;
   font-size: clamp(.98rem, 2.6vw, 1.13rem);
   color: var(--cream);
 }
 .lede strong { color: var(--gold); }
-.hero .codebox { max-width: 780px; margin: 1.4rem auto; text-align: left; }
-.cta { display: flex; flex-wrap: wrap; gap: .9rem 1rem; justify-content: center; padding-bottom: 2.6rem; }
 
 .status-strip {
   background: var(--gold); color: #000;
@@ -325,7 +385,7 @@ code {
   border: 3px solid var(--ink); box-shadow: 3px 3px 0 var(--ink);
   padding: .22rem .6rem; text-transform: uppercase; letter-spacing: .04em;
 }
-.chip.ok   { background: var(--blue); color: #fff; }
+.chip.ok   { background: var(--blue); color: #000; }  /* black on blue = 5.7:1 (AA) */
 .chip.warn { background: var(--gold); color: #000; }
 .chip.fail { background: var(--red);  color: #fff; }
 
@@ -342,7 +402,7 @@ code {
 
 /* ---------- misc ---------- */
 .note-cap {
-  background: var(--cream); border: 4px solid var(--ink); box-shadow: 8px 8px 0 var(--ink);
+  background: var(--cream); border: 4px solid var(--ink); box-shadow: 10px 10px 0 var(--ink);
   background-image: radial-gradient(rgba(0,0,0,.10) 1.3px, transparent 1.4px);
   background-size: 11px 11px;
   color: var(--text);
@@ -350,6 +410,10 @@ code {
   margin-top: clamp(20px, 3.4vw, 34px);
 }
 .note-cap .caption { margin-top: -2.4rem; margin-bottom: .7rem; }
+/* the editor's note is a list of one-sentence facts, not a wall of prose */
+.note-list { margin: 0; padding-left: 1.2rem; }
+.note-list li { margin: .55rem 0; }
+.note-list li::marker { color: var(--red); font-weight: 800; }
 .tilt-l { transform: rotate(-.6deg); }
 .tilt-r { transform: rotate(.6deg); }
 
@@ -366,7 +430,7 @@ footer .credits strong { color: var(--gold); }
 @media (prefers-reduced-motion: no-preference) {
   html { scroll-behavior: smooth; }
   @keyframes portalPulse { from { transform: scale(1); } to { transform: scale(1.025); } }
-  .portal-wrap .portal { animation: portalPulse 5.5s ease-in-out infinite alternate; transform-origin: 50% 52%; }
+  .hero-stage .portal { animation: portalPulse 5.5s ease-in-out infinite alternate; transform-origin: 50% 50%; }
   @keyframes burstWiggle { from { rotate: -2.5deg; } to { rotate: 2.5deg; } }
   .burst { animation: burstWiggle 3.2s ease-in-out infinite alternate; }
   @keyframes krakTwinkle { from { opacity: .55; } to { opacity: 1; } }
@@ -374,9 +438,15 @@ footer .credits strong { color: var(--gold); }
 }
 
 @media (max-width: 560px) {
-  .masthead nav a { font-size: .6rem; padding: .22rem .3rem; }
+  /* keep the tiny type but grow the hit area to ≥24px (WCAG 2.5.8) */
+  .masthead nav a { font-size: .6rem; padding: .45rem .4rem; }
+  /* shrink the logo + Source button so the masthead stays one row instead of
+     wrapping the button onto a second row (which also broke anchor scroll offset) */
+  .logo { font-size: 1.35rem; }
+  .masthead .btn { font-size: .66rem; padding: .28rem .5rem; }
+  .masthead .wrap { gap: .5rem; }
   .kpanel > header .ep { display: none; }
-  .burst.b1 { top: -3%; }
+  .burst.b1 { top: -2%; }
   .burst.b2 { bottom: 2%; }
 }
 
@@ -390,10 +460,12 @@ footer .credits strong { color: var(--gold); }
 /* active item on the cross-page nav */
 .masthead nav a[aria-current="page"] { color: #000; background: var(--gold); border-color: var(--ink); }
 
-/* section-anchor sub-nav strip (landing page only) — static, so it clears the
-   sticky masthead instead of stacking on top of it */
-.subnav { background: var(--space); border-bottom: 5px solid var(--ink); }
-.subnav .wrap { display: flex; gap: .35rem .5rem; flex-wrap: nowrap; overflow-x: auto; padding-block: .5rem; }
+/* section-anchor sub-nav strip (the Guide page) — static, so it clears the sticky
+   masthead instead of stacking on top of it. A right-edge fade signals that the strip
+   scrolls horizontally when items run off the viewport on narrow screens. */
+.subnav { background: var(--space); border-bottom: 5px solid var(--ink); -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); }
+.subnav .wrap { display: flex; gap: .35rem .5rem; flex-wrap: nowrap; overflow-x: auto; padding-block: .5rem; scrollbar-width: none; }
+.subnav .wrap::-webkit-scrollbar { display: none; }
 .subnav a {
   flex: 0 0 auto; font-family: var(--display); text-transform: uppercase; letter-spacing: .04em;
   font-size: .82rem; color: var(--cream); text-decoration: none; white-space: nowrap;
@@ -413,14 +485,17 @@ footer .credits strong { color: var(--gold); }
    break, or a single un-wrappable <code> pushes the whole column past the viewport. */
 .doc { font-size: clamp(1rem, 2.5vw, 1.08rem); line-height: 1.62; color: var(--text); overflow-wrap: anywhere; }
 .doc > :first-child { margin-top: 0; }
-.doc h1, .doc h2, .doc h3, .doc h4 { font-family: var(--display); text-transform: uppercase; letter-spacing: .02em; line-height: 1; }
-.doc h1 { font-size: clamp(2.2rem, 8vw, 3.6rem); margin: .2rem 0 .8rem; color: var(--space); text-shadow: .045em .045em 0 var(--gold); }
+/* Reading-page headings stay flat: no offset drop-shadow (it doubled into a muddy
+   ghost layer, esp. red h2 over a gold shadow) and no rotate. The comic shadow lives
+   only on the landing's display headlines. */
+.doc h1, .doc h2, .doc h3, .doc h4 { font-family: var(--display); text-transform: uppercase; letter-spacing: .02em; line-height: 1; text-shadow: none; transform: none; }
+.doc h1 { font-size: clamp(2.2rem, 8vw, 3.6rem); margin: .2rem 0 .8rem; color: var(--space); }
 .doc h2 { font-size: clamp(1.55rem, 5.5vw, 2.3rem); margin: 2rem 0 .7rem; color: var(--red); border-bottom: 4px solid var(--ink); padding-bottom: .2rem; }
 .doc h3 { font-size: clamp(1.25rem, 4vw, 1.5rem); margin: 1.5rem 0 .5rem; color: var(--purp); }
 .doc h4 { font-size: 1.05rem; margin: 1.2rem 0 .4rem; color: var(--space); letter-spacing: .06em; }
 .doc p { margin: 0 0 1rem; }
-.doc a { color: var(--red); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 2px; }
-.doc a:hover { color: var(--blue); background: var(--gold); }
+.doc a { color: var(--red-text); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 2px; }
+.doc a:hover { color: #000; background: var(--gold); }  /* black on gold ≈ 14:1; blue-on-gold was 2.5:1 */
 .doc strong { color: var(--space); font-weight: 800; }
 .doc em { color: var(--purp); }
 .doc ul, .doc ol { margin: 0 0 1rem; padding-left: 1.4rem; }
@@ -447,3 +522,71 @@ footer .credits strong { color: var(--gold); }
 
 /* doc-page footer nav (back / cross-links) */
 .docnav { display: flex; flex-wrap: wrap; gap: .8rem; justify-content: center; margin-top: 1.6rem; }
+
+/* ============================================================
+   CONDENSED-LANDING COMPONENTS — the concept diagram, Quick Start,
+   the "what's inside" cards, and the Guide page's intro. Added when
+   the reference content moved to the Guide and the landing shrank to
+   pitch → idea → start → signposts.
+   ============================================================ */
+
+/* ---------- concept diagram: repo → boom tube → machine ---------- */
+.concept {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+  gap: clamp(.5rem, 1.8vw, 1.1rem);
+  margin-top: clamp(1.2rem, 3vw, 2rem);
+}
+.cnode {
+  flex: 1 1 200px; max-width: 300px; text-align: center;
+  background-color: var(--cream); color: var(--text);
+  background-image: radial-gradient(rgba(0,0,0,.10) 1.3px, transparent 1.4px);
+  background-size: 11px 11px;
+  border: 4px solid var(--ink); box-shadow: 8px 8px 0 var(--ink);
+  padding: clamp(.9rem, 2.4vw, 1.3rem);
+}
+.cnode.portal { background-color: var(--space); background-image: none; color: var(--cream); }
+.cnode-glyph { height: clamp(64px, 12vw, 92px); display: grid; place-items: center; }
+.cnode-glyph svg { height: 100%; width: auto; filter: drop-shadow(3px 3px 0 var(--ink)); }
+.cnode.portal .cnode-glyph svg { filter: drop-shadow(3px 3px 0 var(--ink)); }
+.cnode-title { font-family: var(--display); text-transform: uppercase; letter-spacing: .03em; font-size: clamp(1.1rem, 3vw, 1.5rem); margin: .55rem 0 .1rem; }
+.cnode-sub { margin: 0; font-size: clamp(.78rem, 2vw, .9rem); }
+.cnode code { font-size: .92em; }
+/* the connector carries the two-way loop: forward apply/fix, return verify/rollback */
+.cconn { flex: 0 0 auto; display: flex; flex-direction: column; gap: .35rem; align-items: center;
+  font-family: var(--display); text-transform: uppercase; letter-spacing: .04em;
+  font-size: clamp(.72rem, 1.8vw, .98rem); line-height: 1; white-space: nowrap; }
+.cconn .fwd  { color: var(--gold); }
+.cconn .back { color: var(--cyan); }
+@media (max-width: 640px) {
+  /* stacked: rotate the arrow glyphs so forward reads downward */
+  .cconn { flex-basis: 100%; flex-direction: row; gap: .9rem; justify-content: center; }
+}
+.concept-note { text-align: center; margin: clamp(1rem, 2.6vw, 1.6rem) auto 0; max-width: 60ch; }
+
+/* ---------- Quick Start (3 panels) and the "inside" signpost cards ---------- */
+.qs-grid, .cards {
+  display: grid; gap: clamp(14px, 2.6vw, 26px);
+  margin-top: clamp(1.1rem, 2.6vw, 1.7rem); align-items: stretch;
+}
+.qs-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr)); }
+.cards   { grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); }
+.qs-grid .kpanel:nth-child(odd)  { transform: rotate(-.4deg); }
+.qs-grid .kpanel:nth-child(even) { transform: rotate(.4deg); }
+
+.card {
+  display: flex; flex-direction: column; gap: .3rem; text-decoration: none;
+  background-color: var(--cream); color: var(--text);
+  background-image: radial-gradient(rgba(0,0,0,.10) 1.3px, transparent 1.4px);
+  background-size: 11px 11px;
+  border: 4px solid var(--ink); box-shadow: 6px 6px 0 var(--ink);
+  padding: clamp(.9rem, 2.4vw, 1.15rem);
+}
+.card:hover { transform: translate(-2px,-2px); box-shadow: 8px 8px 0 var(--ink); background-color: var(--gold); color: #000; }
+.card h3 { font-family: var(--display); text-transform: uppercase; letter-spacing: .02em; font-size: 1.15rem; margin: 0; }
+.card p { margin: 0; font-size: .88rem; }
+.card .go { margin-top: auto; font-family: var(--display); text-transform: uppercase; font-size: .8rem; color: var(--red-text); }
+.card:hover .go { color: #000; }
+
+/* ---------- Guide page intro ---------- */
+.guide-intro { padding-block: clamp(1.8rem, 5vw, 3rem) clamp(1.4rem, 3.6vw, 2.2rem); }
+.guide-title { font-size: clamp(2.6rem, 10vw, 5rem); color: var(--gold); transform: rotate(-1.4deg); margin: .4rem 0 .8rem; }
