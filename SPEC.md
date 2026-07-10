@@ -132,6 +132,7 @@ src/
     reconcile.ts           the one verb loop
     sync.ts                pre-reconcile config-repo fetch/pull(--rebase --autostash)-and-report
     commit.ts              commit local config-repo changes (shared by `botu commit` + apply --commit)
+    diff.ts                botu diff (read-only: working-tree diff vs HEAD + untracked)
     push.ts reset.ts       botu push / botu reset
     registry.ts            per-section phase dispatch
     resources/             link · copy · glob · packages · run · hook
