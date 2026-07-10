@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { run } from "@stricli/core";
 import { app } from "../src/cli.ts";
-import { COMMAND_NAMES, COMMANDS } from "../src/commands/catalog.ts";
+import { commandList, commandNames } from "../src/commands/catalog.ts";
 import { completionScript } from "../src/commands/completions.ts";
 import { manPage } from "../src/commands/man.ts";
 import { skillDoc } from "../src/commands/skill.ts";
@@ -29,12 +29,14 @@ function ctxFor(env: Record<string, string | undefined>, cwd: string): { ctx: Bo
 
 // ---- catalog ----------------------------------------------------------------
 
-test("catalog command names are unique and include the core verbs", () => {
-  expect(new Set(COMMAND_NAMES).size).toBe(COMMAND_NAMES.length);
-  for (const v of ["apply", "verify", "repair", "uninstall", "source", "doctor", "validate"]) {
-    expect(COMMAND_NAMES).toContain(v);
+test("command list (derived from the route map) is unique and includes the core verbs", () => {
+  const names = commandNames();
+  expect(new Set(names).size).toBe(names.length);
+  // mcp is a real route now, so it must appear in the derived list like any other.
+  for (const v of ["apply", "verify", "repair", "uninstall", "source", "mcp", "doctor", "validate"]) {
+    expect(names).toContain(v);
   }
-  expect(COMMAND_NAMES).not.toContain("watchtower");
+  expect(names).not.toContain("watchtower");
 });
 
 // ---- completions ------------------------------------------------------------
@@ -42,14 +44,14 @@ test("catalog command names are unique and include the core verbs", () => {
 test("bash completion lists every command and wires the function", () => {
   const s = completionScript("bash");
   expect(s).toContain("complete -F _botu botu");
-  for (const name of COMMAND_NAMES) expect(s).toContain(name);
+  for (const name of commandNames()) expect(s).toContain(name);
 });
 
 test("zsh completion is a #compdef with described commands", () => {
   const s = completionScript("zsh");
   expect(s.startsWith("#compdef botu")).toBe(true);
   expect(s).toContain("_describe");
-  expect(s).toContain(`'validate:${COMMANDS.find((c) => c.name === "validate")?.brief}'`);
+  expect(s).toContain(`'validate:${commandList().find((c) => c.name === "validate")?.brief}'`);
   // An apostrophe in a brief is escaped for the single-quoted zsh literal.
   expect(s).toContain("'\\''");
 });
@@ -66,7 +68,7 @@ test("man page is valid-ish roff naming every command", () => {
   const m = manPage("9.9.9");
   expect(m).toContain('.TH BOTU 1 "" "botu 9.9.9"');
   expect(m).toContain(".SH COMMANDS");
-  for (const c of COMMANDS) expect(m).toContain(`.B ${c.name}`);
+  for (const c of commandList()) expect(m).toContain(`.B ${c.name}`);
 });
 
 // ---- skill -------------------------------------------------------------------
@@ -75,7 +77,7 @@ test("skill doc is a SKILL.md with frontmatter naming every command", () => {
   const s = skillDoc("9.9.9");
   expect(s).toStartWith("---\nname: botu\n");
   expect(s).toContain("# botu (v9.9.9)"); // version stamped in the heading
-  for (const c of COMMANDS) expect(s).toContain(`\`botu ${c.name}\``);
+  for (const c of commandList()) expect(s).toContain(`\`botu ${c.name}\``);
   // the safety facts an agent must not miss
   expect(s).toContain("--dry-run");
   expect(s).toContain("--json");

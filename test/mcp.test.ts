@@ -1,46 +1,20 @@
-// `botu mcp add` arg parsing + claude-argv construction. The key property: the server
-// command survives as distinct argv elements (never string-joined into a shell word),
-// so a path with a space or a shell metacharacter is passed through, not re-parsed.
+// `botu mcp add` claude-argv construction. The key property: the server command survives
+// as distinct argv elements (never string-joined into a shell word), so a path with a
+// space or a shell metacharacter is passed through, not re-parsed. Stricli now owns the
+// flag/positional parsing (mcp is a real route), so there's no parser to unit-test here —
+// only the argv assembly (buildMcpAddArgv), which is what carries the injection-safety.
 import { expect, test } from "bun:test";
-import { buildMcpAddArgv, parseMcpAdd } from "../src/commands/mcp.ts";
+import { buildMcpAddArgv, type McpAdd } from "../src/commands/mcp.ts";
 
-test("parseMcpAdd reads name, flags, and the server after --", () => {
-  const p = parseMcpAdd([
-    "add",
-    "ctx7",
-    "--scope",
-    "user",
-    "--env-file",
-    "secrets.env",
-    "--",
-    "node",
-    "s.js",
-  ]);
-  expect(p).toEqual({
-    name: "ctx7",
-    scope: "user",
-    envFile: "secrets.env",
-    agent: false,
-    server: ["node", "s.js"],
-  });
-});
-
-test("parseMcpAdd defaults scope=project, env-file=.env", () => {
-  const p = parseMcpAdd(["add", "x", "--", "serve"]);
-  expect(p).toMatchObject({ scope: "project", envFile: ".env", agent: false });
-});
-
-test("parseMcpAdd errors without `add`, without a name, or without a server", () => {
-  expect(parseMcpAdd(["list"])).toHaveProperty("error");
-  expect(parseMcpAdd(["add", "--"])).toHaveProperty("error");
-  expect(parseMcpAdd(["add", "x"])).toHaveProperty("error");
-  expect(parseMcpAdd(["add", "x", "--bogus", "--", "serve"])).toHaveProperty("error");
+const add = (o: Partial<McpAdd> & Pick<McpAdd, "name" | "server">): McpAdd => ({
+  scope: "project",
+  envFile: ".env",
+  agent: false,
+  ...o,
 });
 
 test("buildMcpAddArgv keeps the server as separate argv (non-agent path)", () => {
-  const p = parseMcpAdd(["add", "fs", "--", "mcp-fs", "--root", "/my dir"]);
-  if ("error" in p) throw new Error(p.error);
-  const argv = buildMcpAddArgv(p);
+  const argv = buildMcpAddArgv(add({ name: "fs", server: ["mcp-fs", "--root", "/my dir"] }));
   expect(argv.slice(0, 6)).toEqual(["claude", "mcp", "add", "fs", "--scope", "project"]);
   expect(argv).toEqual([
     "claude",
@@ -61,9 +35,9 @@ test("buildMcpAddArgv keeps the server as separate argv (non-agent path)", () =>
 });
 
 test("buildMcpAddArgv passes env-file and server as sh positionals (agent path)", () => {
-  const p = parseMcpAdd(["add", "sb", "--agent", "--env-file", "a b.env", "--", "mcp-sb", "--flag", "x;y"]);
-  if ("error" in p) throw new Error(p.error);
-  const argv = buildMcpAddArgv(p);
+  const argv = buildMcpAddArgv(
+    add({ name: "sb", agent: true, envFile: "a b.env", server: ["mcp-sb", "--flag", "x;y"] }),
+  );
   // After `sh -c <script> botu-mcp`, the env-file and each server arg are distinct
   // positionals — never concatenated into the script — so quoting can't be broken.
   const shIdx = argv.indexOf("sh");

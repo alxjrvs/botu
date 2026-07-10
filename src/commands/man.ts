@@ -3,14 +3,16 @@
 import { buildCommand } from "@stricli/core";
 import type { BotuContext } from "../context.ts";
 import { VERSION } from "../lib/version.ts";
-import { COMMANDS } from "./catalog.ts";
+import { commandList } from "./catalog.ts";
 
 // Escape the roff comment/escape lead-in. Briefs never start a line with a control
 // char (they follow .B on the previous line), so only the escape char needs guarding.
 const roff = (s: string): string => s.replace(/\\/g, "\\\\");
 
 export function manPage(version: string): string {
-  const commands = COMMANDS.map((c) => `.TP\n.B ${c.name}\n${roff(c.brief)}`).join("\n");
+  const commands = commandList()
+    .map((c) => `.TP\n.B ${c.name}\n${roff(c.brief)}`)
+    .join("\n");
   return `.TH BOTU 1 "" "botu ${version}" "botu manual"
 .SH NAME
 botu \\- an installable dotfiles + workspace engine
