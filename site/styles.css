@@ -261,8 +261,13 @@ code {
   overflow: hidden;
 }
 .cosmic h2 { color: var(--gold); text-shadow: .09em .09em 0 var(--red); -webkit-text-stroke: 1.5px var(--ink); paint-order: stroke fill; }
-.cosmic a { color: var(--cyan); }
-.cosmic a:hover { color: var(--gold); }
+/* Recolor prose links only — never .btn. A button carries its own designed
+   fill+text pairing (white-on-red, black-on-gold/blue); letting this rule win
+   on specificity would repaint that text cyan, producing a vibrating cyan-on-red
+   "offset" combo. :not(.btn) keeps every button variant self-contained here and
+   for any future variant. */
+.cosmic a:not(.btn) { color: var(--cyan); }
+.cosmic a:not(.btn):hover { color: var(--gold); }
 
 /* absolutely-positioned krackle decorations in cosmic sections */
 .kdeco { position: absolute; pointer-events: none; z-index: 0; opacity: .9; }
