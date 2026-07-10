@@ -1,7 +1,7 @@
 // The docs-site generator. Turns the repo's own markdown (SPEC.md, the migration
-// prompt, the design retrospective) into Kirby-styled HTML pages that share the
-// landing page's design system. "Operate as a docs site" = add a markdown file
-// here and it becomes a page — no hand-authored HTML per doc.
+// prompt) into Kirby-styled HTML pages that share the landing page's design
+// system. "Operate as a docs site" = add a markdown file here and it becomes a
+// page — no hand-authored HTML per doc.
 //
 // The shared chrome (SVG krackle symbols, footer, favicon, copy-to-clipboard
 // script) is lifted verbatim from site/index.html so the hand-authored landing
@@ -48,13 +48,6 @@ const PAGES: Page[] = [
     desc: "A prompt that converts a legacy bash botufile to botu's typed botufile.toml and ports bash hooks to TypeScript — mapping rules, hook contract, and how to verify the result.",
     caption: "Crossing over from the old world!",
   },
-  {
-    slug: "retrospective",
-    src: "docs/grander.md",
-    title: "The History — botu",
-    desc: "A record of the four structural 'grander changes' explored on the old bash engine and where each one shipped in the TypeScript rewrite.",
-    caption: "How the saga was decided!",
-  },
 ];
 
 // Rewrite in-repo .md links to their built pages, and wrap tables so they scroll
@@ -64,7 +57,6 @@ const rewrite = (html: string): string =>
   html
     .replace(/href="[^"]*?SPEC\.md"/g, 'href="spec.html"')
     .replace(/href="[^"]*?migration-prompt\.md"/g, 'href="migration.html"')
-    .replace(/href="[^"]*?grander\.md"/g, 'href="retrospective.html"')
     .replace(/href="[^"]*?README\.md"/g, 'href="index.html"')
     .replace(/<table>/g, '<div class="tablewrap"><table>')
     .replace(/<\/table>/g, "</table></div>")
