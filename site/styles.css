@@ -303,7 +303,6 @@ code {
 .burst.goldb span { color: #000; }
 /* four-direction ink outline so every Impact stroke edge is inked and legible on red */
 .burst.redb  span { color: var(--cream); text-shadow: -1.5px -1.5px 0 var(--ink), 1.5px -1.5px 0 var(--ink), -1.5px 1.5px 0 var(--ink), 1.5px 1.5px 0 var(--ink); }
-.burst.cyanb span { color: #002; }
 
 /* ---------- hero (full-screen portal stage + title callout) ---------- */
 .hero { position: relative; text-align: center; }
@@ -337,7 +336,7 @@ code {
   box-shadow: 12px 12px 0 var(--ink);
   -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
 }
-.hero-card .caption { transform: rotate(-1.4deg); margin-bottom: .2rem; }
+.hero-card .caption { margin-bottom: .2rem; }
 .hero-card h1 { font-size: clamp(2.8rem, 10vw, 5.4rem); margin: .3rem 0 .5rem; }
 .hero-card .cta { display: flex; flex-wrap: wrap; gap: .7rem .9rem; justify-content: center; margin-top: 1.3rem; }
 
@@ -373,7 +372,6 @@ code {
 }
 
 /* ---------- grids ---------- */
-.grid2 { display: grid; gap: clamp(18px, 3vw, 30px); grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr)); align-items: stretch; }
 .gridloop { display: grid; gap: clamp(20px, 3.4vw, 34px); grid-template-columns: repeat(auto-fit, minmax(min(100%, 430px), 1fr)); align-items: stretch; }
 .gridloop .kpanel:nth-child(odd)  { transform: rotate(-.45deg); }
 .gridloop .kpanel:nth-child(even) { transform: rotate(.45deg); }
@@ -392,12 +390,14 @@ code {
 .phases { display: flex; flex-wrap: wrap; gap: .5rem .6rem; align-items: center; margin: 1rem 0 .2rem; }
 .phase {
   font-family: var(--display); text-transform: uppercase; letter-spacing: .05em;
-  background: var(--blue); color: #fff;
+  /* black on Kirby blue = 5.7:1 (AA); white on it is only 3.7:1. The red/mag
+     variants below flip back to white, which clears AA on those darker inks. */
+  background: var(--blue); color: #000;
   border: 3px solid var(--ink); box-shadow: 3px 3px 0 var(--ink);
   padding: .22rem .65rem; font-size: .95rem;
 }
-.phase:nth-child(4n+3) { background: var(--red); }
-.phase:nth-child(4n+5) { background: var(--mag); }
+.phase:nth-child(4n+3) { background: var(--red); color: #fff; }
+.phase:nth-child(4n+5) { background: var(--mag); color: #fff; }
 .phases .arr { font-weight: 900; font-size: 1.15rem; }
 
 /* ---------- misc ---------- */
@@ -547,7 +547,6 @@ footer .credits strong { color: var(--gold); }
 .cnode.portal { background-color: var(--space); background-image: none; color: var(--cream); }
 .cnode-glyph { height: clamp(64px, 12vw, 92px); display: grid; place-items: center; }
 .cnode-glyph svg { height: 100%; width: auto; filter: drop-shadow(3px 3px 0 var(--ink)); }
-.cnode.portal .cnode-glyph svg { filter: drop-shadow(3px 3px 0 var(--ink)); }
 .cnode-title { font-family: var(--display); text-transform: uppercase; letter-spacing: .03em; font-size: clamp(1.1rem, 3vw, 1.5rem); margin: .55rem 0 .1rem; }
 .cnode-sub { margin: 0; font-size: clamp(.78rem, 2vw, .9rem); }
 .cnode code { font-size: .92em; }
