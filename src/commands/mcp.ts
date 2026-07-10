@@ -1,8 +1,10 @@
 // `botu mcp add <name> [--scope S] [--env-file F] [--agent] -- <server…>` — register an
-// MCP server the 1Password-native way: wrap it in `op run --env-file` so secrets
-// resolve from op:// refs, never on disk. Ported from the bash engine/commands/mcp.
-// Handled as a raw passthrough (not a Stricli command) so the `--` server args are
-// not parsed.
+// MCP server the 1Password-native way: wrap it in `op run --env-file` so secrets resolve
+// from op:// refs, never on disk. A real Stricli route: the app enables
+// `allowArgumentEscapeSequence`, so everything after `--` is captured verbatim as trailing
+// positionals (the server argv, which can itself contain flags and a second `--`) instead
+// of being parsed as botu's own flags — no pre-Stricli passthrough needed.
+import { buildCommand, buildRouteMap } from "@stricli/core";
 import type { BotuContext } from "../context.ts";
 import { hasCommand } from "../lib/proc.ts";
 
@@ -29,33 +31,8 @@ export interface McpAdd {
   readonly server: string[];
 }
 
-// Parse `add <name> [flags] -- <server…>`. Returns the parsed shape or an error string.
-export function parseMcpAdd(args: string[]): McpAdd | { error: string } {
-  if (args[0] !== "add") {
-    return { error: "usage: botu mcp add <name> [--scope S] [--env-file F] [--agent] -- <server-cmd>" };
-  }
-  let name = "";
-  let scope = "project";
-  let envFile = ".env";
-  let agent = false;
-  const server: string[] = [];
-  let afterDash = false;
-  for (let i = 1; i < args.length; i++) {
-    const a = args[i] as string;
-    if (afterDash) server.push(a);
-    else if (a === "--scope") scope = args[++i] ?? "";
-    else if (a === "--env-file") envFile = args[++i] ?? "";
-    else if (a === "--agent") agent = true;
-    else if (a === "--") afterDash = true;
-    else if (a.startsWith("-")) return { error: `unknown flag: ${a}` };
-    else name = a;
-  }
-  if (!name || server.length === 0) return { error: "need <name> and a server command after --" };
-  return { name, scope, envFile, agent, server };
-}
-
-// Build the `claude mcp add …` argv for a parsed request. The server command is always
-// carried as distinct argv elements (never string-joined), so quoting/spaces survive.
+// Build the `claude mcp add …` argv for a request. The server command is always carried
+// as distinct argv elements (never string-joined), so quoting/spaces survive.
 export function buildMcpAddArgv(p: McpAdd): string[] {
   const wrapped = p.agent
     ? ["sh", "-c", AGENT_WRAPPER, "botu-mcp", p.envFile, ...p.server]
@@ -63,15 +40,62 @@ export function buildMcpAddArgv(p: McpAdd): string[] {
   return ["claude", "mcp", "add", p.name, "--scope", p.scope, "--", ...wrapped];
 }
 
-export function runMcp(args: string[], ctx: BotuContext): number {
-  const parsed = parseMcpAdd(args);
-  if ("error" in parsed) {
-    ctx.process.stderr.write(`botu mcp: ${parsed.error}\n`);
-    return 2;
-  }
-  if (!hasCommand("claude", ctx.env)) {
-    ctx.process.stderr.write("botu mcp: claude not on PATH\n");
-    return 2;
-  }
-  return Bun.spawnSync(buildMcpAddArgv(parsed), { stdout: "inherit", stderr: "inherit" }).exitCode;
-}
+type McpAddFlags = { scope?: string; envFile?: string; agent?: boolean };
+
+// Positionals arrive as [name, ...server]: `name` is the one positional before `--`, and
+// the escape sequence delivers the whole server command after it. minimum: 2 → a name plus
+// at least one server token.
+const mcpAddCommand = buildCommand<McpAddFlags, string[], BotuContext>({
+  docs: { brief: "Register an MCP server, wrapping it in `op run --env-file`" },
+  parameters: {
+    flags: {
+      scope: {
+        kind: "parsed",
+        parse: (s: string) => s,
+        optional: true,
+        brief: "Passed through to `claude mcp add --scope` (default: project)",
+      },
+      envFile: {
+        kind: "parsed",
+        parse: (s: string) => s,
+        optional: true,
+        brief: "op env-file of op:// refs for `op run --env-file` (default: .env)",
+      },
+      agent: {
+        kind: "boolean",
+        optional: true,
+        brief: "Read the service-account token from the keychain first (headless/agent path)",
+      },
+    },
+    positional: {
+      kind: "array",
+      parameter: {
+        parse: (s: string) => s,
+        placeholder: "name -- server-cmd…",
+        brief: "server name, then `--`, then the server command (kept verbatim)",
+      },
+      minimum: 2,
+    },
+  },
+  func(flags, ...args) {
+    const [name, ...server] = args;
+    if (!hasCommand("claude", this.env)) {
+      this.process.stderr.write("botu mcp: claude not on PATH\n");
+      this.process.exitCode = 2;
+      return;
+    }
+    const argv = buildMcpAddArgv({
+      name: name as string,
+      scope: flags.scope ?? "project",
+      envFile: flags.envFile ?? ".env",
+      agent: flags.agent ?? false,
+      server,
+    });
+    this.process.exitCode = Bun.spawnSync(argv, { stdout: "inherit", stderr: "inherit" }).exitCode;
+  },
+});
+
+export const mcpRouteMap = buildRouteMap({
+  routes: { add: mcpAddCommand },
+  docs: { brief: "Register an MCP server the 1Password-native way" },
+});

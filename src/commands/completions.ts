@@ -4,7 +4,7 @@
 // e.g. `botu completions zsh > ~/.zsh/completions/_botu`.
 import { buildCommand } from "@stricli/core";
 import type { BotuContext } from "../context.ts";
-import { COMMAND_NAMES, COMMANDS } from "./catalog.ts";
+import { commandList, commandNames } from "./catalog.ts";
 
 export const SHELLS = ["bash", "zsh", "fish"] as const;
 export type Shell = (typeof SHELLS)[number];
@@ -21,7 +21,7 @@ function bash(): string {
 _botu() {
   local cur="\${COMP_WORDS[COMP_CWORD]}"
   if [ "$COMP_CWORD" -eq 1 ]; then
-    COMPREPLY=( $(compgen -W "${COMMAND_NAMES.join(" ")}" -- "$cur") )
+    COMPREPLY=( $(compgen -W "${commandNames().join(" ")}" -- "$cur") )
   fi
 }
 complete -F _botu botu
@@ -29,7 +29,9 @@ complete -F _botu botu
 }
 
 function zsh(): string {
-  const lines = COMMANDS.map((c) => `    '${sq(c.name)}:${sq(c.brief)}'`).join("\n");
+  const lines = commandList()
+    .map((c) => `    '${sq(c.name)}:${sq(c.brief)}'`)
+    .join("\n");
   return `#compdef botu
 # botu zsh completion. Install as _botu on your $fpath, or:  source <(botu completions zsh)
 _botu() {
@@ -44,9 +46,9 @@ _botu "$@"
 }
 
 function fish(): string {
-  const lines = COMMANDS.map(
-    (c) => `complete -c botu -n __fish_use_subcommand -a '${sq(c.name)}' -d '${sq(c.brief)}'`,
-  ).join("\n");
+  const lines = commandList()
+    .map((c) => `complete -c botu -n __fish_use_subcommand -a '${sq(c.name)}' -d '${sq(c.brief)}'`)
+    .join("\n");
   return `# botu fish completion. Install:  botu completions fish > ~/.config/fish/completions/botu.fish
 complete -c botu -f
 ${lines}

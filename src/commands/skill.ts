@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { buildCommand } from "@stricli/core";
 import type { BotuContext } from "../context.ts";
 import { VERSION } from "../lib/version.ts";
-import { COMMANDS } from "./catalog.ts";
+import { commandList } from "./catalog.ts";
 
 // Where Claude Code keeps user skills: $CLAUDE_CONFIG_DIR (if the user relocated ~/.claude),
 // else ~/.claude. Returns undefined only when neither HOME nor CLAUDE_CONFIG_DIR is set.
@@ -17,7 +17,9 @@ function skillInstallPath(env: Record<string, string | undefined>): string | und
 }
 
 export function skillDoc(version: string): string {
-  const commands = COMMANDS.map((c) => `- \`botu ${c.name}\` — ${c.brief}`).join("\n");
+  const commands = commandList()
+    .map((c) => `- \`botu ${c.name}\` — ${c.brief}`)
+    .join("\n");
   return `---
 name: botu
 description: >-

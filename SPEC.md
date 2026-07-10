@@ -1,10 +1,11 @@
 # BoomTube — design spec
 
-**BoomTube** is an **installable dotfiles + workspace engine**: a single
-self-contained binary (executable: **`botu`**), compiled from **TypeScript on
-Bun**, that reconciles a machine from a declarative `botufile.toml` and opens
-portals to code workspaces. Named for Kirby's **Boom Tube** — it opens portals to
-your machine's ideal state, and to your code.
+**BoomTube** is a **workspace manager**: a single self-contained binary
+(executable: **`botu`**), compiled from **TypeScript on Bun**, that reconciles a
+machine from a declarative `botufile.toml` and opens portals to code workspaces —
+provisioning your workspace fast, then getting out of your way so you can work.
+Named for Kirby's **Boom Tube** — it opens portals to your machine's ideal state,
+and to your code.
 
 It began as a bash prototype (extracted from `alxjrvs/dotFiles`) and was rewritten
 to TypeScript; this document is the design of record for that engine.
@@ -35,10 +36,14 @@ A `botu` invocation does one of two things:
 
 2. **Discovered subcommands** — built-ins are the `@stricli` route map (`source`,
    `code`, `mcp`, `where`, `rollback`, `upgrade`, `validate`, `doctor`, `completions`,
-   `man`); user commands resolve at runtime from `<config>/commands/<name>.ts`. Adding
-   a tool never edits a dispatch table. The command names live once in
-   `src/commands/catalog.ts`, which also drives the dispatch guard, shell
-   completions, and the man page.
+   `man`, `skill`); user commands resolve at runtime from `<config>/commands/<name>.ts`.
+   The route map is the **single registry, with no hardcoded dispatch anywhere**: `mcp`
+   is an ordinary route (its `-- <server args>` ride through verbatim via the scanner's
+   argument-escape sequence, so it needs no pre-Stricli passthrough), and `index.ts`
+   decides built-in-vs-discovered by asking the route map itself
+   (`getRoutingTargetForInput`). `src/commands/catalog.ts` *derives* command names +
+   briefs from that same route map for shell completions, the man page, and `botu skill`
+   — one source of truth, no parallel table to keep in sync.
 
 ### Config source is a git remote (repo-only)
 
@@ -125,11 +130,14 @@ the dotfiles repo (path + remote) and code dir.
 
 ```
 src/
-  cli.ts · index.ts        @stricli app + entrypoint (dispatch: mcp, user cmds, built-ins)
-  commands/                init, link, apply/verify/repair/uninstall (reconcile.ts), source
-                           (diff/commit/push/reset route map), where, rollback, upgrade,
-                           validate, doctor, code, mcp, completions, man
-                           catalog.ts (command names: dispatch guard + completions + man)
+  cli.ts · index.ts        @stricli app + entrypoint (one dispatch: route-map lookup →
+                           discovered user cmd, else Stricli — no hardcoded cases)
+  commands/                apply/verify/repair/uninstall (reconcile.ts), source
+                           (set/diff/commit/push/reset route map — set is the bootstrap),
+                           where, rollback, upgrade, validate, doctor, code, mcp (add
+                           route), completions, man, skill
+                           catalog.ts (names+briefs derived from the route map for
+                           completions + man + skill)
   engine/
     reconcile.ts           the one verb loop
     sync.ts                pre-reconcile config-repo fetch/pull(--rebase --autostash)-and-report

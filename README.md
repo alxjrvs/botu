@@ -1,6 +1,7 @@
 # BoomTube
 
-**BoomTube** is an installable **dotfiles + workspace engine**. Its executable,
+**BoomTube** is a **workspace manager** — it provisions your machine and your
+code workspaces fast, then gets out of your way so you can work. Its executable,
 **`botu`**, reconciles your machine from a declarative `botufile.toml` —
 `apply` / `verify` / `repair` — rolls back any change, and opens portals to your
 code workspaces. One self-contained binary, compiled from **TypeScript on
@@ -92,7 +93,11 @@ botu where config|code|engine   # resolve where botu keeps things
 botu upgrade            # upgrade the botu binary itself
 botu completions bash|zsh|fish  # shell completions
 botu man                # the man page
+botu skill              # emit a Claude Code SKILL.md (--install writes it to ~/.claude)
 ```
+
+Registering an MCP server the 1Password-native way is `botu mcp add <name> -- <server
+cmd>` (it wraps the server in `op run --env-file` so secrets resolve from `op://` refs).
 
 ## The `botufile.toml`
 
