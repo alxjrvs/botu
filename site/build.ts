@@ -67,7 +67,10 @@ const rewrite = (html: string): string =>
     .replace(/href="[^"]*?grander\.md"/g, 'href="retrospective.html"')
     .replace(/href="[^"]*?README\.md"/g, 'href="index.html"')
     .replace(/<table>/g, '<div class="tablewrap"><table>')
-    .replace(/<\/table>/g, "</table></div>");
+    .replace(/<\/table>/g, "</table></div>")
+    // Make fenced code blocks keyboard-scrollable (they overflow-x): a focusable
+    // region is the only way keyboard-only users can reach clipped content.
+    .replace(/<pre>/g, '<pre tabindex="0" role="region" aria-label="Code sample">');
 
 const navItem = (href: string, slug: string, label: string, active: string): string =>
   `<a href="${href}"${active === slug ? ' aria-current="page"' : ""}>${label}</a>`;
@@ -77,6 +80,7 @@ const masthead = (active: string): string => `<header class="masthead">
     <a class="logo" href="index.html">BOTU<span class="bang">!</span></a>
     <nav aria-label="Pages">
       ${navItem("index.html", "home", "Home", active)}
+      ${navItem("guide.html", "guide", "Guide", active)}
       ${navItem("spec.html", "spec", "Spec", active)}
       ${navItem("migration.html", "migration", "Migrate", active)}
       ${navItem("retrospective.html", "retrospective", "History", active)}
@@ -111,11 +115,42 @@ ${masthead(p.slug)}
 ${body}
     </article>
     <nav class="docnav" aria-label="More docs">
-      <a class="btn" href="index.html">&larr; Back to the guide</a>
+      <a class="btn" href="index.html">&larr; Home</a>
+      <a class="btn blue" href="guide.html">The Guide</a>
       <a class="btn gold" href="https://github.com/alxjrvs/botu">View source on GitHub</a>
     </nav>
   </div>
 </main>
+${footerHtml}
+${copyScript}
+</body>
+</html>
+`;
+};
+
+// The Guide is bespoke HTML (comic panels, syntax-tinted codeboxes) that markdown
+// can't express, so it isn't a Page above — but it still shouldn't hand-duplicate
+// the chrome. We author only its body fragment (guide.body.html: the subnav + the
+// reference <main>) and wrap it in the same lifted chrome as the landing, so a nav
+// or footer edit in index.html propagates here too. Uses the landing's panel system,
+// not the .doc long-form column.
+const renderGuide = (): string => {
+  const body = readFileSync(resolve(SITE, "guide.body.html"), "utf8");
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guide — botu</title>
+<meta name="description" content="How to use botu: install, bootstrap a machine, the reconcile loop (apply / verify / fix, and rollback), the botufile.toml reference, config-repo git, code portals, and housekeeping.">
+${faviconLink}
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+${symbolsSvg}
+${masthead("guide")}
+${body}
 ${footerHtml}
 ${copyScript}
 </body>
@@ -128,4 +163,6 @@ for (const p of PAGES) {
   writeFileSync(out, render(p));
   console.log(`site: built ${p.slug}.html  ← ${p.src}`);
 }
-console.log(`site: ${PAGES.length} page(s) generated in ${SITE}`);
+writeFileSync(resolve(SITE, "guide.html"), renderGuide());
+console.log("site: built guide.html  ← guide.body.html");
+console.log(`site: ${PAGES.length + 1} page(s) generated in ${SITE}`);

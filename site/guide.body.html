@@ -1,0 +1,270 @@
+<!-- ===========================================================================
+     GUIDE — the reference content moved off the condensed landing page.
+     This is a *body fragment*: build.ts wraps it in the shared chrome (symbol
+     defs, masthead, footer, copy-to-clipboard script) lifted from index.html,
+     so the guide is a build artifact (site/guide.html) like the doc pages —
+     edit here, run `bun run site/build.ts`. Reuses the landing's panel/kpanel
+     system (NOT the .doc long-form styling); it's panelled reference, not prose.
+     =========================================================================== -->
+<nav class="subnav" aria-label="On this page">
+  <div class="wrap">
+    <a href="#install">Install</a>
+    <a href="#bootstrap">Bootstrap</a>
+    <a href="#reconcile">Reconcile</a>
+    <a href="#botufile">Botufile</a>
+    <a href="#git">Git</a>
+    <a href="#portals">Portals</a>
+    <a href="#housekeeping">Housekeeping</a>
+  </div>
+</nav>
+
+<main id="main">
+
+<!-- ============================== GUIDE HERO ============================== -->
+<section class="section cosmic guide-intro">
+  <svg class="kdeco" style="color:#f3e9cf; top:20px; left:-40px; width:240px" viewBox="0 0 240 120" aria-hidden="true"><use href="#krak1"/></svg>
+  <div class="wrap">
+    <p class="caption">The operator&rsquo;s manual!</p>
+    <h1 class="display shout guide-title">THE GUIDE</h1>
+    <p class="lede" style="margin-inline:0">Everything <code>botu</code> does, in the order you&rsquo;ll meet it — install, bootstrap, the reconcile loop, the <code>botufile.toml</code>, config-repo git, code portals, and housekeeping.</p>
+  </div>
+</section>
+
+<!-- ============================== INSTALL ============================== -->
+<section class="section" id="install">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="caption">Meanwhile, on your machine&hellip;</p>
+      <h2 class="display">Install the Engine</h2>
+    </div>
+    <div class="panel tilt-l">
+      <div class="codebox">
+        <pre tabindex="0" role="region" aria-label="Install commands: curl and Homebrew"><span class="c"># curl installer — downloads the binary for your platform, puts botu on PATH</span>
+curl -fsSL https://raw.githubusercontent.com/alxjrvs/botu/main/install.sh | sh
+
+<span class="c"># …or Homebrew (this repo doubles as the tap)</span>
+brew tap alxjrvs/botu https://github.com/alxjrvs/botu
+brew install botu</pre>
+      </div>
+      <p>One self-contained executable — <strong>macOS arm64/x64, Linux x64</strong>. The binary embeds the Bun runtime, so nothing else is required. Override the install prefix with <code>BOTU_PREFIX</code>.</p>
+    </div>
+  </div>
+</section>
+
+<div class="greeble" aria-hidden="true"></div>
+
+<!-- ============================== BOOTSTRAP ============================== -->
+<section class="section" id="bootstrap">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="caption right">A new world awaits — bring the file!</p>
+      <h2 class="display">Bootstrap a Machine</h2>
+    </div>
+    <div class="panel tilt-r">
+      <div class="codebox">
+        <pre tabindex="0" role="region" aria-label="Bootstrap commands"><span class="k">botu</span> init alxjrvs/dotfiles   <span class="c"># clone your remote dotfiles repo and apply it — one-shot bootstrap</span>
+<span class="k">botu</span> apply                   <span class="c"># thereafter: reconcile from the recorded config repo</span></pre>
+      </div>
+      <p><code>init</code>/<code>link</code> take a <strong>remote reference</strong> — <code>owner/repo</code>, <code>github:owner/repo</code>, a git URL, optionally <code>@ref</code> — never an arbitrary local path. botu clones it into a managed cache dir and records a breadcrumb. <code>init</code> clones <em>and</em> applies; <code>link</code> clones and records only.</p>
+      <p style="margin-bottom:.4rem"><strong>The fresh-machine one-liner:</strong></p>
+      <div class="codebox">
+        <pre tabindex="0" role="region" aria-label="Fresh-machine one-liner">curl -fsSL https://raw.githubusercontent.com/alxjrvs/botu/main/install.sh | sh &amp;&amp; <span class="k">botu</span> init owner/repo</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== RECONCILE LOOP ============================== -->
+<section class="section cosmic" id="reconcile">
+  <svg class="kdeco" style="color:#f3e9cf; top:16px; right:-50px; width:280px; transform:rotate(190deg)" viewBox="0 0 240 120" aria-hidden="true"><use href="#krak1"/></svg>
+  <svg class="kdeco twinkle" style="color:#f3e9cf; bottom:10px; left:-60px; width:300px" viewBox="0 0 240 120" aria-hidden="true"><use href="#krak1"/></svg>
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="caption">Three verbs. One loop. And a way back!</p>
+      <h2 class="display">The Reconcile Loop</h2>
+      <p style="max-width:70ch"><code>apply</code> / <code>verify</code> / <code>fix</code> (and their quiet sibling <code>uninstall</code>) are <strong>one verb-parameterized loop</strong> over a resource registry — the same walk over the same resources every time; only the verb changes. <code>rollback</code> is the escape hatch: it replays the journal, not the loop.</p>
+    </div>
+
+    <div class="gridloop">
+      <article class="kpanel">
+        <header><h3>Apply! <span class="ep">panel one</span></h3></header>
+        <div class="kbody">
+          <div class="codebox">
+            <pre tabindex="0" role="region" aria-label="botu apply flags"><span class="k">botu</span> apply              <span class="c"># symlink / copy / install / run from botufile.toml</span>
+<span class="k">botu</span> apply <span class="f">--dry-run</span>    <span class="c"># preview every change; touch nothing</span>
+<span class="k">botu</span> apply <span class="f">--skip</span>       <span class="c"># skip conflicting targets instead of overwriting them</span>
+<span class="k">botu</span> apply <span class="f">--commit</span>     <span class="c"># commit local config-repo edits before pulling</span>
+<span class="k">botu</span> apply <span class="f">--resume</span>     <span class="c"># continue an interrupted apply (skips completed steps)</span></pre>
+          </div>
+          <p><strong>THE FILE COMMANDS</strong> — the machine bends to it.</p>
+        </div>
+      </article>
+
+      <article class="kpanel blue">
+        <header><h3>Verify! <span class="ep">panel two</span></h3></header>
+        <div class="kbody">
+          <div class="codebox">
+            <pre tabindex="0" role="region" aria-label="botu verify flags"><span class="k">botu</span> verify             <span class="c"># check for drift — exit 0 ok / 2 warn / 1 fail</span>
+<span class="k">botu</span> verify <span class="f">--json</span>      <span class="c"># …as a structured drift report</span></pre>
+          </div>
+          <div class="chips">
+            <span class="chip ok">exit 0 &middot; OK</span>
+            <span class="chip warn">exit 2 &middot; WARN</span>
+            <span class="chip fail">exit 1 &middot; FAIL</span>
+          </div>
+        </div>
+      </article>
+
+      <article class="kpanel goldh">
+        <header><h3>Fix! <span class="ep">panel three</span></h3></header>
+        <div class="kbody">
+          <div class="codebox">
+            <pre tabindex="0" role="region" aria-label="botu fix"><span class="k">botu</span> fix                <span class="c"># repair drift (apply, overwriting conflicts)</span></pre>
+          </div>
+          <p>Drift detected? Drift <strong>destroyed</strong>. <code>fix</code> is the loop again, with the gloves off.</p>
+        </div>
+      </article>
+
+      <article class="kpanel mag">
+        <header><h3>Rollback! <span class="ep">panel four</span></h3></header>
+        <div class="kbody">
+          <div class="codebox">
+            <pre tabindex="0" role="region" aria-label="botu rollback"><span class="k">botu</span> rollback           <span class="c"># undo the most recent apply (restores backed-up files)</span></pre>
+          </div>
+          <p>Every mutating run <strong>journals</strong> its changes and backs up displaced files. Rollback replays the journal — the portal works in both directions.</p>
+        </div>
+      </article>
+    </div>
+
+    <div class="note-cap tilt-l">
+      <p class="caption right">Editor&rsquo;s note!</p>
+      <ul class="note-list">
+        <li><code>apply</code>/<code>fix</code> pull the config repo first (<code>pull --rebase --autostash</code>) — local edits ride along and land back on top. A failed pull is <em>reported</em>, never blocking: botu reconciles from the last-known-good local clone.</li>
+        <li><code>verify</code> counts <em>&ldquo;N commits behind&rdquo;</em> as drift and warns on uncommitted or unpushed changes — without touching the working tree.</li>
+        <li>A file already squatting at a <code>link</code> destination is <strong>overwritten by default</strong>; pass <code>--skip</code> to spare it.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== BOTUFILE ============================== -->
+<section class="section" id="botufile">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="caption">One file to declare it all — the machine obeys!</p>
+      <h2 class="display">The botufile.toml</h2>
+    </div>
+    <div class="panel">
+      <div class="codebox">
+        <pre tabindex="0" role="region" aria-label="botufile.toml example"><span class="sec">[[section]]</span>
+<span class="key">name</span> = <span class="s">"Shell + git"</span>
+<span class="key">link</span> = [
+  { <span class="key">src</span> = <span class="s">".zshrc"</span>,     <span class="key">dst</span> = <span class="s">"~/.zshrc"</span> },
+  { <span class="key">src</span> = <span class="s">"ssh/config"</span>, <span class="key">dst</span> = <span class="s">"~/.ssh/config"</span>, <span class="key">mode</span> = <span class="s">"600"</span> },
+]
+<span class="key">glob</span> = [{ <span class="key">pattern</span> = <span class="s">"zsh/[0-9]*.zsh"</span>, <span class="key">into</span> = <span class="s">"~/.config/zsh/"</span> }]
+
+<span class="sec">[[section]]</span>
+<span class="key">name</span> = <span class="s">"Packages"</span>
+<span class="key">brewfile</span> = <span class="s">"Brewfile"</span>
+<span class="key">mise</span> = true
+
+<span class="sec">[[section]]</span>
+<span class="key">name</span> = <span class="s">"macOS only"</span>
+<span class="key">when</span> = { <span class="key">os</span> = <span class="s">"darwin"</span> }          <span class="c"># gate by os / host / profile</span>
+<span class="key">run</span>  = [{ <span class="key">on</span> = <span class="s">"apply"</span>, <span class="key">cmd</span> = <span class="s">"defaults write com.apple.dock autohide -bool true"</span> }]
+
+<span class="sec">[[section]]</span>
+<span class="key">name</span> = <span class="s">"Secrets"</span>
+<span class="key">hook</span> = [{ <span class="key">name</span> = <span class="s">"op-agent"</span>, <span class="key">with</span> = { <span class="key">vault</span> = <span class="s">"claude-agent"</span> } }]   <span class="c"># → hooks/op-agent.ts</span></pre>
+      </div>
+
+      <p><strong>Sections run in phase order:</strong></p>
+      <div class="phases" role="list" aria-label="Phase order">
+        <span class="phase" role="listitem">link</span><span class="arr" aria-hidden="true">&rarr;</span>
+        <span class="phase" role="listitem">copy</span><span class="arr" aria-hidden="true">&rarr;</span>
+        <span class="phase" role="listitem">glob</span><span class="arr" aria-hidden="true">&rarr;</span>
+        <span class="phase" role="listitem">packages</span><span class="arr" aria-hidden="true">&rarr;</span>
+        <span class="phase" role="listitem">run</span><span class="arr" aria-hidden="true">&rarr;</span>
+        <span class="phase" role="listitem">hook</span>
+      </div>
+      <p>Imperative escapes are <code>run</code> steps (a shell command) or a <strong>hook</strong> — a <code>hooks/&lt;name&gt;.ts</code> module exporting <code>apply</code>/<code>verify</code>/<code>fix</code> that receives a typed <code>HookApi</code> — the extension point for anything the declarative resources can&rsquo;t express. Multi-machine setups gate sections with <code>when</code>, or layer overlay files (<code>botufile.&lt;os|host|profile&gt;.toml</code>).</p>
+    </div>
+  </div>
+</section>
+
+<div class="greeble alt" aria-hidden="true"></div>
+
+<!-- ============================== CONFIG-REPO GIT ============================== -->
+<section class="section" id="git">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="caption right">The repo remembers!</p>
+      <h2 class="display">Config-Repo Git, Without Leaving botu</h2>
+    </div>
+    <div class="panel tilt-l">
+      <div class="codebox">
+        <pre tabindex="0" role="region" aria-label="Config-repo git commands"><span class="k">botu</span> diff               <span class="c"># show uncommitted local changes in the config repo</span>
+<span class="k">botu</span> commit             <span class="c"># commit local changes in the config repo</span>
+<span class="k">botu</span> push               <span class="c"># push the config repo's local commits upstream</span>
+<span class="k">botu</span> reset              <span class="c"># discard local changes, reset to origin</span>
+<span class="k">botu</span> reset <span class="f">--force</span>      <span class="c"># …including commits no remote has (refused otherwise)</span></pre>
+      </div>
+      <p>Your dotfiles repo is the source of truth — botu speaks git for it so you never have to <code>cd</code> into the cache dir yourself.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== CODE PORTALS ============================== -->
+<section class="section cosmic" id="portals">
+  <svg class="kdeco" style="color:#f3e9cf; top:24px; left:-40px; width:240px; transform:rotate(-10deg)" viewBox="0 0 240 120" aria-hidden="true"><use href="#krak1"/></svg>
+  <svg class="kdeco twinkle" style="color:#f3e9cf; bottom:20px; right:-40px; width:220px; transform:rotate(200deg)" viewBox="0 0 240 120" aria-hidden="true"><use href="#krak1"/></svg>
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="caption">Portals within portals!</p>
+      <h2 class="display">Code Portals</h2>
+      <p style="max-width:70ch"><code>botu code</code> opens portals to the repos under your code dir (default <code>~/Code</code>).</p>
+    </div>
+
+    <div class="miniportals" aria-hidden="true">
+      <svg viewBox="0 0 100 100"><use href="#miniportal"/></svg>
+      <svg viewBox="0 0 100 100" style="transform:scale(.85) rotate(8deg)"><use href="#miniportal"/></svg>
+      <svg viewBox="0 0 100 100" style="transform:scale(.7) rotate(-10deg)"><use href="#miniportal"/></svg>
+    </div>
+
+    <div class="kpanel tilt-r" style="max-width:860px; margin-inline:auto">
+      <header><h3>Every repo, one step through the tube</h3></header>
+      <div class="kbody">
+        <div class="codebox">
+          <pre tabindex="0" role="region" aria-label="botu code commands"><span class="k">botu</span> code init ~/Code    <span class="c"># record your code dir</span>
+<span class="k">botu</span> code claude         <span class="c"># symlink every repo into one dir, open `claude agents` there</span>
+<span class="k">botu</span> code cmux           <span class="c"># one cmux workspace per repo</span></pre>
+        </div>
+        <p><code>code claude</code> makes every repo <code>@</code>-taggable for agent dispatch — no idle fleet required; <code>code cmux</code> opens one workspace per repo. Both honor <code>--dry-run</code> and only spawn the backend tool when it&rsquo;s present.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== HOUSEKEEPING ============================== -->
+<section class="section" id="housekeeping">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="caption">Even gods do chores.</p>
+      <h2 class="display">Housekeeping</h2>
+    </div>
+    <div class="panel tilt-r">
+      <div class="codebox">
+        <pre tabindex="0" role="region" aria-label="Housekeeping commands"><span class="k">botu</span> validate           <span class="c"># parse + schema-check the botufile; change nothing</span>
+<span class="k">botu</span> doctor             <span class="c"># check botu's own preconditions (tools, keychain, state)</span>
+<span class="k">botu</span> where config|code|engine   <span class="c"># resolve where botu keeps things</span>
+<span class="k">botu</span> upgrade            <span class="c"># upgrade the botu binary itself</span>
+<span class="k">botu</span> completions bash|zsh|fish  <span class="c"># shell completions</span>
+<span class="k">botu</span> man                <span class="c"># the man page</span></pre>
+      </div>
+      <p>The maintenance bay: check the file, check the engine, find where everything lives, keep the binary fresh.</p>
+    </div>
+  </div>
+</section>
+
+</main>
