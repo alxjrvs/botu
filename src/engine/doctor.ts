@@ -48,7 +48,7 @@ export async function doctor(ctx: BoomContext): Promise<number> {
   // one fact, one report, at the severity that actually applies here.
   let gitRequiredAndMissing = false;
   if (!breadcrumb) {
-    report.warn("no remote config linked — run `boom source set <owner/repo>`");
+    report.warn(NO_CONFIG_REPO_MSG);
   } else if (!hasCommand("git", ctx.env)) {
     gitRequiredAndMissing = true;
     report.fail("git not on PATH — required to sync the config repo (repo-only config)");

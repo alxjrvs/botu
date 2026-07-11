@@ -45,7 +45,7 @@ test("--help lists the core verbs", async () => {
 test("a known verb routes to the engine", async () => {
   const { buf, ctx } = fakeContext();
   await run(app, ["source"], ctx);
-  expect(buf.err).toContain("no dotfiles repo");
+  expect(buf.err).toContain("no config repo linked");
 });
 
 test("an unknown command reports an error", async () => {
@@ -58,7 +58,7 @@ test("source accepts --commit/-m", async () => {
   const { buf, ctx } = fakeContext();
   await run(app, ["source", "--commit", "-m", "wip"], ctx);
   // cwd resolves no config — proves the flags parsed, not that a git sync ran.
-  expect(buf.err).toContain("no dotfiles repo");
+  expect(buf.err).toContain("no config repo linked");
 });
 
 test("the removed `sync` alias is no longer a command", async () => {

@@ -15,7 +15,7 @@ export function manPage(version: string): string {
     .join("\n");
   return `.TH BOOM 1 "" "boom ${version}" "boom manual"
 .SH NAME
-boom \\- an installable dotfiles + workspace engine
+boom \\- a workspace manager (provision a machine + open portals to your code)
 .SH SYNOPSIS
 .B boom
 .I command
@@ -27,9 +27,9 @@ boom reconciles a machine from a declarative
 packages, running steps and hooks \\(em and opens
 portals to your code workspaces.
 It is a single self-contained binary.
-The reconcile commands (source, verify, repair,
-uninstall) share one loop over a resource registry,
-and rollback undoes the most recent source run.
+The reconcile verbs (\\fBsource\\fR/\\fBsync\\fR, verify,
+repair, uninstall) share one loop over a resource
+registry, and rollback undoes the most recent sync.
 .SH COMMANDS
 ${commands}
 .SH FILES
@@ -47,8 +47,7 @@ Override the dotfiles repo boom resolves.
 .B BOOM_OS, BOOM_HOST
 Override the auto-detected OS / hostname used to gate sections.
 .SH SEE ALSO
-.BR boom-verify (1),
-.BR boom-source (1)
+Full guide and source: https://github.com/alxjrvs/boom
 `;
 }
 

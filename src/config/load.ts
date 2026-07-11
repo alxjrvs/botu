@@ -16,9 +16,11 @@ import { type Boomfile, BoomfileSchema } from "./schema.ts";
 export const CONFIG_FILE = "boomfile.toml";
 
 // The one canonical "you haven't linked a config repo yet" message, so every command that
-// resolves the config (reconcile, validate, where, doctor) points the user at the same
-// next step with identical wording instead of a near-copy that can drift.
-export const NO_CONFIG_REPO_MSG = "no dotfiles repo found — run `boom source set <owner/repo>`";
+// resolves the config (reconcile, validate, where, doctor) — and requireConfigBreadcrumb —
+// points the user at the same next step with identical wording instead of a near-copy that
+// can drift. Reported verbatim through the Reporter; requireConfigBreadcrumb prefixes `boom:`
+// for its raw-stderr path.
+export const NO_CONFIG_REPO_MSG = "no config repo linked — run `boom source set <owner/repo>`";
 
 export class BoomConfigError extends Error {}
 
@@ -69,7 +71,7 @@ export async function readConfigBreadcrumb(env: Env): Promise<ConfigBreadcrumb |
 export async function requireConfigBreadcrumb(ctx: BoomContext): Promise<ConfigBreadcrumb | undefined> {
   const breadcrumb = await readConfigBreadcrumb(ctx.env);
   if (!breadcrumb) {
-    ctx.process.stderr.write("boom: no remote config linked — run `boom source set <owner/repo>`\n");
+    ctx.process.stderr.write(`boom: ${NO_CONFIG_REPO_MSG}\n`);
     return undefined;
   }
   return breadcrumb;

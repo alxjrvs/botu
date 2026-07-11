@@ -1,7 +1,6 @@
-// The boomfile.toml schema (nested-by-section). This typed contract is the source
-// of truth shared by the loader, the reconcile engine (M2), and the dotFiles
-// migration prompt. Within a section, resources run by phase:
-//   link → copy → glob → packages (brewfile/mise) → run → hook.
+// The boomfile.toml schema (nested-by-section). This typed contract is the source of
+// truth shared by the loader and the reconcile engine. Within a section, resources run
+// by phase:  link → copy → glob → packages (brewfile/mise) → osx_default → run → hook.
 import * as v from "valibot";
 
 // A Unix permission bitmask as an octal string ("644", "0700"). Validated here at the

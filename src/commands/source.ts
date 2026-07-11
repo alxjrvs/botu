@@ -112,9 +112,9 @@ const resetCommand = buildCommand<{ force?: boolean }, [], BoomContext>({
 
 export const sourceRouteMap = buildRouteMap({
   routes: {
-    // `sync` is the reconcile verb, wired as the route map's `defaultCommand` so it runs on
-    // a bare `boom source` — and `hideRoute`-d so it is never an exposed second spelling.
-    // `boom source` is the one documented way to reconcile; the rest operate the config repo.
+    // `sync` is the reconcile verb, wired as the route map's `defaultCommand` so bare
+    // `boom source` reconciles — and also exposed as the explicit `boom source sync` spelling
+    // (the canonical name; bare `boom source` is its shorthand). The rest operate the config repo.
     sync: syncCommand,
     set: setCommand,
     status: statusCommand,
@@ -124,7 +124,7 @@ export const sourceRouteMap = buildRouteMap({
   },
   defaultCommand: "sync",
   docs: {
-    brief: "Reconcile your machine (bare); or operate the config repo (set | status | diff | push | reset)",
-    hideRoute: { sync: true },
+    brief:
+      "Reconcile your machine (bare, or `sync`); or operate the config repo (set | status | diff | push | reset)",
   },
 });

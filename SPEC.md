@@ -14,9 +14,10 @@ to TypeScript; this document is the design of record for that engine.
 
 A `boom` invocation does one of two things:
 
-1. **Reconcile verbs** over a config repo's `boomfile.toml` — the `sync` verb is
-   triggered by the bare `boom source` command; the rest are their own top-level commands:
-   - `boom source`  — reconcile the machine to the boomfile, running the `sync` verb (`--upgrade` also upgrades outdated brewfile formulae)
+1. **Reconcile verbs** over a config repo's `boomfile.toml` — the `sync` verb runs on
+   the bare `boom source` command (and its explicit `boom source sync` spelling); the
+   rest are their own top-level commands:
+   - `boom source` / `boom source sync` — reconcile the machine to the boomfile, running the `sync` verb (`--upgrade` also upgrades outdated brewfile formulae)
    - `boom verify` — check drift, exit 0 ok / 2 warn / 1 fail (`--json` for a report)
    - `boom repair` — repair drift (sync, overwriting conflicts)
    - `boom uninstall`
@@ -25,8 +26,9 @@ A `boom` invocation does one of two things:
    the most recent sync (`--run-id` targets an older one, `--list` enumerates them);
    `source --resume` continues an interrupted one. A
    conflicting (non-boom-owned) file at a `link` destination is **overwritten by
-   default**; `source --skip` opts out instead. There are no command aliases — one
-   canonical name per verb.
+   default**; `source --skip` opts out instead. `sync` is the one canonical reconcile
+   name; bare `boom source` is its shorthand (the namespace's default command), not a
+   separate alias.
 
    The `sync` verb / `repair` (never `verify`/`uninstall`) also sync the config repo's own git
    state against its remote first (`src/engine/sync.ts`): by default `pull --rebase
@@ -103,7 +105,7 @@ Resources:
 
 - `link` / `copy` `{ src, dst, mode? }`, `glob { pattern, into }`
 - `brewfile = "FILE"`, `mise = true`
-- `run = [{ on = "sync"|"verify", cmd }]` — the inline imperative escape
+- `run = [{ on = "sync"|"verify"|"uninstall", cmd }]` — the inline imperative escape
 - `hook = [{ name, with? }]` — load `hooks/<name>.ts`, the TS resource-type extension
 
 A section may carry `when = { os, host, profile }` to gate by machine; overlay
