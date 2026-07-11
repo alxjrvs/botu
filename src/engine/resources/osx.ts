@@ -1,6 +1,6 @@
 // The osx_default resource: `defaults write/read` a macOS default. OS-gated to
-// darwin (a no-op elsewhere), like the bash engine. Marks ctx.osx.changed so sync
-// can restart the owning UI processes at the end of the run.
+// darwin (a no-op elsewhere), like the bash engine. Marks ctx.dirty("osx") so its own
+// finalizeOsx can restart the owning UI processes at the end of the run.
 import { detectOs } from "../../config/profile.ts";
 import type { OsxDefault } from "../../config/schema.ts";
 import { expandHome } from "../../lib/fs.ts";
@@ -78,7 +78,7 @@ export function reconcileOsxDefault(entry: OsxDefault, ctx: ReconcileCtx): void 
       });
       if (p.exitCode === 0) {
         report.ok(`${disp} = ${want}`);
-        ctx.osx.changed = true;
+        ctx.dirty.add("osx");
       } else {
         report.fail(`${disp} (defaults write failed)`);
       }
@@ -93,4 +93,18 @@ export function reconcileOsxDefault(entry: OsxDefault, ctx: ReconcileCtx): void 
     case "uninstall":
       return;
   }
+}
+
+// End-of-run finalize (registered on the osx resource, called once by finalizeResources).
+// Applied macOS defaults don't take effect until their owning apps restart — a universal
+// consequence of osx_default, so the engine does it, not the config. Self-gates on
+// ctx.dirty: only fires when a `defaults write` actually changed something this run (which
+// only happens on a mutating, non-dry darwin run), so it's a no-op for verify/uninstall/dry.
+export function finalizeOsx(ctx: ReconcileCtx): void {
+  if (!ctx.dirty.has("osx") || detectOs(ctx.env) !== "darwin") return;
+  ctx.report.header("macOS finalize");
+  // Best-effort: killall exits nonzero when a named process isn't running, which is normal
+  // and not worth surfacing — the restart is a courtesy so changes show without a re-login.
+  Bun.spawnSync(["killall", "Dock", "Finder", "SystemUIServer"], { stdout: "ignore", stderr: "ignore" });
+  ctx.report.ok("restarted Dock/Finder/SystemUIServer (defaults changed)");
 }

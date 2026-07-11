@@ -11,7 +11,7 @@ import { colorEnabled } from "../lib/color.ts";
 import { displayPath, filesEqual, linkTarget, pathExists } from "../lib/fs.ts";
 import { Reporter } from "../lib/reporter.ts";
 import { displace, Journal, newRunId, pruneRuns, readRun } from "./journal.ts";
-import { reconcileSection } from "./registry.ts";
+import { finalizeResources, reconcileSection } from "./registry.ts";
 import { backupsDir, type ManifestEntry, readManifest, writeManifest } from "./state.ts";
 import { syncConfigRepo } from "./sync.ts";
 import type { LinkMode, ReconcileCtx, Verb } from "./types.ts";
@@ -174,7 +174,7 @@ export async function reconcile(verb: Verb, ctx: BoomContext, opts: ReconcileOpt
     journal,
     backupRoot,
     resumeDone,
-    osx: { changed: false },
+    dirty: new Set<string>(),
   };
 
   // Merge overlay files (boomfile.<os|host|profile>.toml) onto the base, then gate
@@ -215,13 +215,10 @@ export async function reconcile(verb: Verb, ctx: BoomContext, opts: ReconcileOpt
     await writeManifest(ctx.env, []); // uninstall clears the manifest
   }
 
-  // Applied macOS defaults don't take effect until the owning apps restart — a
-  // universal consequence of osx_default, so the engine does it (not the config).
-  if (mutating && rctx.osx.changed && pc.os === "darwin") {
-    report.header("macOS finalize");
-    Bun.spawnSync(["killall", "Dock", "Finder", "SystemUIServer"], { stdout: "ignore", stderr: "ignore" });
-    report.ok("restarted Dock/Finder/SystemUIServer (defaults changed)");
-  }
+  // End-of-run finalize hooks (each self-gates): the seam where a resource acts on its own
+  // accumulated state — e.g. osx restarts Dock/Finder/SystemUIServer once, iff a default
+  // actually changed — instead of the core loop reaching into a resource-specific flag.
+  await finalizeResources(rctx);
 
   return finish();
 }

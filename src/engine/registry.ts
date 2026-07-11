@@ -1,13 +1,67 @@
-// Section dispatch in phase order: link → copy → glob → packages → run → hook.
-// Phase order (rather than file order) is the deterministic replacement for the bash
-// engine's source-order execution.
+// The resource registry: a data-driven, phase-ordered table of resource types — the
+// executable form of the phase order (link → copy → glob → brewfile → mise → osx_default →
+// run → hook) that used to live only in a comment above a hand-written dispatch sequence.
+// Adding a resource is one table entry, not an edit to the section loop.
+//
+// Each resource declares how to turn a Section into labelled work units (so the per-item
+// error boundary can name what failed) and, optionally, a `finalize` hook that runs once at
+// end-of-run — the seam that lets osx own its own "restart the UI" side effect instead of
+// the core loop reaching into an osx-specific ctx flag.
 import type { Section } from "../config/schema.ts";
 import { reconcileCopy, reconcileGlob, reconcileLink } from "./resources/filesystem.ts";
 import { reconcileHook } from "./resources/hook.ts";
-import { reconcileOsxDefault } from "./resources/osx.ts";
+import { finalizeOsx, reconcileOsxDefault } from "./resources/osx.ts";
 import { reconcileBrewfile, reconcileMise } from "./resources/packages.ts";
 import { reconcileRun } from "./resources/run.ts";
 import type { ReconcileCtx } from "./types.ts";
+
+// One unit of work + the label the error boundary reports it under.
+interface WorkItem {
+  readonly label: string;
+  run(ctx: ReconcileCtx): void | Promise<void>;
+}
+
+// A resource type: its work for a section, plus an optional once-per-run finalize.
+interface ResourceType {
+  items(section: Section): WorkItem[];
+  finalize?(ctx: ReconcileCtx): void | Promise<void>;
+}
+
+// Phase order is table order — the loop below runs resources top to bottom.
+const RESOURCES: readonly ResourceType[] = [
+  {
+    items: (s) =>
+      (s.link ?? []).map((e) => ({ label: `link ${e.dst}`, run: (ctx) => reconcileLink(e, ctx) })),
+  },
+  {
+    items: (s) =>
+      (s.copy ?? []).map((e) => ({ label: `copy ${e.dst}`, run: (ctx) => reconcileCopy(e, ctx) })),
+  },
+  {
+    items: (s) =>
+      (s.glob ?? []).map((e) => ({ label: `glob ${e.pattern}`, run: (ctx) => reconcileGlob(e, ctx) })),
+  },
+  {
+    items: (s) => {
+      const bf = s.brewfile;
+      return bf ? [{ label: "brewfile", run: (ctx) => reconcileBrewfile(bf, ctx) }] : [];
+    },
+  },
+  { items: (s) => (s.mise ? [{ label: "mise", run: (ctx) => reconcileMise(ctx) }] : []) },
+  {
+    items: (s) =>
+      (s.osx_default ?? []).map((e) => ({
+        label: `osx ${e.domain} ${e.key}`,
+        run: (ctx) => reconcileOsxDefault(e, ctx),
+      })),
+    finalize: finalizeOsx,
+  },
+  { items: (s) => (s.run ?? []).map((e) => ({ label: "run", run: (ctx) => reconcileRun(e, ctx) })) },
+  {
+    items: (s) =>
+      (s.hook ?? []).map((e) => ({ label: `hook ${e.name}`, run: (ctx) => reconcileHook(e, ctx) })),
+  },
+];
 
 export async function reconcileSection(section: Section, ctx: ReconcileCtx): Promise<void> {
   // Per-resource error boundary: an unexpected throw (EACCES, ENOSPC, a glob error)
@@ -21,14 +75,14 @@ export async function reconcileSection(section: Section, ctx: ReconcileCtx): Pro
     }
   };
 
-  for (const e of section.link ?? []) await guard(`link ${e.dst}`, () => reconcileLink(e, ctx));
-  for (const e of section.copy ?? []) await guard(`copy ${e.dst}`, () => reconcileCopy(e, ctx));
-  for (const e of section.glob ?? []) await guard(`glob ${e.pattern}`, () => reconcileGlob(e, ctx));
-  const brewfile = section.brewfile;
-  if (brewfile) await guard("brewfile", () => reconcileBrewfile(brewfile, ctx));
-  if (section.mise) await guard("mise", () => reconcileMise(ctx));
-  for (const e of section.osx_default ?? [])
-    await guard(`osx ${e.domain} ${e.key}`, () => reconcileOsxDefault(e, ctx));
-  for (const e of section.run ?? []) await guard("run", () => reconcileRun(e, ctx));
-  for (const e of section.hook ?? []) await guard(`hook ${e.name}`, () => reconcileHook(e, ctx));
+  for (const res of RESOURCES) {
+    for (const item of res.items(section)) await guard(item.label, () => item.run(ctx));
+  }
+}
+
+// Run every resource's end-of-run finalize once, after all sections and reaping. Each
+// finalize self-gates (osx only restarts the UI when a default actually changed), so this
+// is safe to call unconditionally for any verb.
+export async function finalizeResources(ctx: ReconcileCtx): Promise<void> {
+  for (const res of RESOURCES) if (res.finalize) await res.finalize(ctx);
 }
