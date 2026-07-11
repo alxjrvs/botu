@@ -1,7 +1,7 @@
 // The sync transaction journal: an append-only NDJSON log per run. Each mutation
 // writes an `intent` then a `done` (with an undo token); a clean run ends `committed`.
 // rollback replays `done` records in reverse; --resume skips destinations already done.
-import { appendFile, mkdir, readdir, readFile, rm } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { backupsDir, type Env, journalDir } from "./state.ts";
 
@@ -30,6 +30,7 @@ export function newRunId(): string {
 
 export class Journal {
   private readonly file: string;
+  private sink?: Bun.FileSink;
   readonly runId: string;
 
   constructor(env: Env, runId: string) {
@@ -37,9 +38,24 @@ export class Journal {
     this.file = join(journalDir(env), `${runId}.ndjson`);
   }
 
+  // One persistent, buffered handle instead of an open→write→close per record, and the
+  // dir is created once on first write rather than before every append. The runId is
+  // unique per run (timestamp + pid), so this file is never shared or appended-to across
+  // runs — writing from the start is correct.
+  private async writer(): Promise<Bun.FileSink> {
+    if (!this.sink) {
+      await mkdir(dirname(this.file), { recursive: true });
+      this.sink = Bun.file(this.file).writer();
+    }
+    return this.sink;
+  }
+
   private async append(obj: unknown): Promise<void> {
-    await mkdir(dirname(this.file), { recursive: true });
-    await appendFile(this.file, `${JSON.stringify(obj)}\n`);
+    const sink = await this.writer();
+    sink.write(`${JSON.stringify(obj)}\n`);
+    // Flush each record: this is a crash-recovery log, so a partially-applied run must
+    // leave its intents/dones durably on disk for --resume / rollback to read.
+    await sink.flush();
   }
 
   intent(op: string, dst: string): Promise<void> {
@@ -105,4 +121,47 @@ export async function readRun(
     else if (rec.t === "side") sides.push(rec as SideRecord);
   }
   return { runId: id, done, sides };
+}
+
+// One-line summary of a recorded run, for `boom rollback --list`: how many reversible
+// ops it holds, how many non-reversible side effects, and whether it reached a clean
+// `committed` end (an uncommitted run was interrupted mid-sync).
+export interface RunSummary {
+  readonly runId: string;
+  readonly ops: number;
+  readonly sides: number;
+  readonly committed: boolean;
+}
+
+// Enumerate the retained runs, newest first — the missing counterpart to `--run-id`,
+// which until now had no way to discover the ids it accepts.
+export async function listRuns(env: Env): Promise<RunSummary[]> {
+  const dir = journalDir(env);
+  let files: string[];
+  try {
+    files = (await readdir(dir)).filter((f) => f.endsWith(".ndjson")).sort();
+  } catch {
+    return [];
+  }
+  const out: RunSummary[] = [];
+  for (const f of files) {
+    let text: string;
+    try {
+      text = await readFile(join(dir, f), "utf8");
+    } catch {
+      continue;
+    }
+    let ops = 0;
+    let sides = 0;
+    let committed = false;
+    for (const line of text.split("\n")) {
+      if (line.length === 0) continue;
+      const rec = JSON.parse(line) as { t: string };
+      if (rec.t === "done") ops++;
+      else if (rec.t === "side") sides++;
+      else if (rec.t === "committed") committed = true;
+    }
+    out.push({ runId: f.replace(/\.ndjson$/, ""), ops, sides, committed });
+  }
+  return out.reverse(); // newest first (filenames sort chronologically)
 }

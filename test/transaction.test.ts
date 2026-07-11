@@ -5,8 +5,9 @@ import { mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BoomContext } from "../src/context.ts";
+import { listRuns } from "../src/engine/journal.ts";
 import { reconcile } from "../src/engine/reconcile.ts";
-import { rollback } from "../src/engine/rollback.ts";
+import { listRollbacks, rollback } from "../src/engine/rollback.ts";
 import { linkTarget, pathExists, stat } from "../src/lib/fs.ts";
 
 interface Sandbox {
@@ -65,6 +66,22 @@ test("rollback removes a freshly applied link", async () => {
   expect(await pathExists(join(sb.home, ".z"))).toBe(true);
   expect(await rollback(sb.ctx)).toBe(0);
   expect(await pathExists(join(sb.home, ".z"))).toBe(false);
+});
+
+test("listRuns / rollback --list enumerate a committed sync's journal", async () => {
+  const sb = await sandbox(`[[section]]\nname = "S"\nlink = [{ src = ".z", dst = "~/.z" }]\n`);
+  await sb.write(".z", "z");
+  expect(await reconcile("sync", sb.ctx, {})).toBe(0);
+
+  const runs = await listRuns(sb.ctx.env);
+  expect(runs).toHaveLength(1);
+  expect(runs[0]?.ops).toBeGreaterThanOrEqual(1);
+  expect(runs[0]?.committed).toBe(true);
+
+  sb.clear();
+  expect(await listRollbacks(sb.ctx)).toBe(0);
+  expect(sb.out()).toContain(runs[0]?.runId ?? "MISSING");
+  expect(sb.out()).toContain("boom rollback --run-id");
 });
 
 test("rollback restores a file displaced by an overwrite", async () => {
