@@ -1,4 +1,4 @@
-// `boom source diff` — show what `boom source commit` would capture in the managed
+// `boom source diff` — show what `boom source push` would capture in the managed
 // config-repo clone: the working-tree diff against HEAD, plus any untracked new files
 // `git diff` omits. Read-only counterpart to commit.ts/push.ts — it touches nothing, it
 // just saves cd-ing into a cache dir you don't normally think about to inspect it.
@@ -18,7 +18,7 @@ export async function diffConfigRepo(ctx: BoomContext): Promise<number> {
   const result = diffHead(breadcrumb.path, ctx.env);
   const untracked = untrackedFiles(breadcrumb.path, ctx.env);
   if (untracked.length > 0) {
-    ctx.process.stdout.write("boom: untracked (new files `boom source commit` would add):\n");
+    ctx.process.stdout.write("boom: untracked (new files `boom source push` would add):\n");
     for (const f of untracked) ctx.process.stdout.write(`  ${f}\n`);
   }
   return result.code === 0 ? 0 : 1;

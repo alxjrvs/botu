@@ -14,14 +14,14 @@ test("loadConfig parses a nested-by-section boomfile.toml", async () => {
     `[[section]]
 name = "Shell"
 link = [{ src = ".zshrc", dst = "~/.zshrc" }]
-run  = [{ on = "apply", cmd = "lefthook install" }]
+run  = [{ on = "sync", cmd = "lefthook install" }]
 `,
   );
   const cfg = await loadConfig(dir);
   expect(cfg.section).toHaveLength(1);
   expect(cfg.section[0]?.name).toBe("Shell");
   expect(cfg.section[0]?.link?.[0]?.dst).toBe("~/.zshrc");
-  expect(cfg.section[0]?.run?.[0]?.on).toBe("apply");
+  expect(cfg.section[0]?.run?.[0]?.on).toBe("sync");
 });
 
 test("loadConfig rejects a schema-invalid boomfile.toml", async () => {

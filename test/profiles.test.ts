@@ -48,7 +48,7 @@ when = { os = "linux" }
 link = [{ src = ".b", dst = "~/.b" }]
 `,
   );
-  expect(await reconcile("apply", sb.ctx, {})).toBe(0);
+  expect(await reconcile("sync", sb.ctx, {})).toBe(0);
   expect(await pathExists(join(sb.home, ".a"))).toBe(false); // darwin section skipped on linux
   expect(await pathExists(join(sb.home, ".b"))).toBe(true);
 });
@@ -62,13 +62,13 @@ link = [{ src = ".w", dst = "~/.w" }]
   const off = await sandbox({});
   await writeFile(join(off.repo, ".w"), "w");
   await writeFile(join(off.repo, "boomfile.toml"), base);
-  await reconcile("apply", off.ctx, {});
+  await reconcile("sync", off.ctx, {});
   expect(await pathExists(join(off.home, ".w"))).toBe(false); // profile not active
 
   const on = await sandbox({});
   await writeFile(join(on.repo, ".w"), "w");
   await writeFile(join(on.repo, "boomfile.toml"), base);
-  await reconcile("apply", on.ctx, { profiles: ["work"] });
+  await reconcile("sync", on.ctx, { profiles: ["work"] });
   expect(await pathExists(join(on.home, ".w"))).toBe(true);
 });
 
@@ -84,7 +84,7 @@ test("overlay file boomfile.<os>.toml is merged", async () => {
     join(sb.repo, "boomfile.darwin.toml"),
     `[[section]]\nname = "mac-overlay"\nlink = [{ src = ".mac", dst = "~/.mac" }]\n`,
   );
-  expect(await reconcile("apply", sb.ctx, {})).toBe(0);
+  expect(await reconcile("sync", sb.ctx, {})).toBe(0);
   expect(await pathExists(join(sb.home, ".base"))).toBe(true);
   expect(await pathExists(join(sb.home, ".mac"))).toBe(true); // from the darwin overlay
 });

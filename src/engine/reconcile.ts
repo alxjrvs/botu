@@ -1,6 +1,6 @@
 // The reconcile core: load + validate the config, run each section under a verb, reap
 // orphaned links, and return the exit code (verify: 0/2/1; mutating verbs: 0/1). For
-// apply/repair it opens a transaction journal (+ backups) so the run is rollback-able and
+// sync/repair it opens a transaction journal (+ backups) so the run is rollback-able and
 // resumable, and persists the manifest of owned destinations.
 import { join } from "node:path";
 import { loadConfig, loadOptionalConfigFile, resolveConfigDir } from "../config/load.ts";
@@ -17,7 +17,7 @@ import { syncConfigRepo } from "./sync.ts";
 import type { LinkMode, ReconcileCtx, Verb } from "./types.ts";
 
 // Version of the `--json` report envelope. Bump when its shape changes so a script
-// consuming `verify --json` / `apply --json` can detect (and refuse) an unknown shape.
+// consuming `verify --json` / `sync --json` can detect (and refuse) an unknown shape.
 export const REPORT_SCHEMA_VERSION = 1;
 
 export interface ReconcileOptions {
@@ -27,12 +27,12 @@ export interface ReconcileOptions {
   readonly json?: boolean;
   readonly resume?: boolean;
   readonly profiles?: string[];
-  // Only consulted for verb "apply"/"repair": commit local config-repo changes before
+  // Only consulted for verb "sync"/"repair": commit local config-repo changes before
   // pulling, instead of the default autostash.
   readonly commit?: boolean;
   readonly commitMessage?: string;
-  // Only consulted for verb "apply"/"repair": also upgrade outdated brewfile formulae
-  // (what `apply --upgrade` sets). Default false — plain apply reconciles declared
+  // Only consulted for verb "sync"/"repair": also upgrade outdated brewfile formulae
+  // (what `boom source --upgrade` sets). Default false — plain sync reconciles declared
   // state, it doesn't force package upgrades as a side effect.
   readonly upgrade?: boolean;
 }
@@ -121,7 +121,7 @@ export async function reconcile(verb: Verb, ctx: BoomContext, opts: ReconcileOpt
       }
       return report.failures > 0 ? 1 : report.warnings > 0 ? 2 : 0;
     }
-    // Mutating verbs (apply/repair/uninstall): same structured envelope as verify,
+    // Mutating verbs (sync/repair/uninstall): same structured envelope as verify,
     // so every reconcile verb is scriptable, not just the read-only one.
     if (json) {
       ctx.process.stdout.write(
@@ -162,7 +162,7 @@ export async function reconcile(verb: Verb, ctx: BoomContext, opts: ReconcileOpt
     return finish();
   }
 
-  const mutating = (verb === "apply" || verb === "repair") && !dryRun;
+  const mutating = (verb === "sync" || verb === "repair") && !dryRun;
   let journal: Journal | undefined;
   let backupRoot: string | undefined;
   let resumeDone: ReadonlySet<string> | undefined;

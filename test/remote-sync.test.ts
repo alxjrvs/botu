@@ -9,7 +9,6 @@ import { join } from "node:path";
 import { readConfigBreadcrumb } from "../src/config/load.ts";
 import { linkRemoteConfigRepo, parseRemoteRef } from "../src/config/remote.ts";
 import type { BoomContext } from "../src/context.ts";
-import { commitConfigRepo } from "../src/engine/commit.ts";
 import { diffConfigRepo } from "../src/engine/diff.ts";
 import { doctor } from "../src/engine/doctor.ts";
 import { pushConfigRepo } from "../src/engine/push.ts";
@@ -132,7 +131,7 @@ test("parseRemoteRef can pin an SSH scp-shorthand too, past its host @", () => {
   });
 });
 
-// ---- sync: verify reports drift, apply pulls -------------------------------
+// ---- sync: verify reports drift, sync pulls -------------------------------
 
 test("verify reports 0 drift right after linking", async () => {
   const origin = await originFixture();
@@ -189,7 +188,7 @@ test("verify warns on committed-but-unpushed local commits even when behind-coun
   expect(rc).toBe(2);
 });
 
-test("apply pulls and reports what changed", async () => {
+test("sync pulls and reports what changed", async () => {
   const origin = await originFixture();
   const env = { XDG_STATE_HOME: await base(), NO_COLOR: "1" };
   const repo = await linkRemoteConfigRepo(env, origin);
@@ -198,26 +197,26 @@ test("apply pulls and reports what changed", async () => {
   commitAll(origin, "add y");
 
   const { ctx, out } = ctxFor(env, repo);
-  await reconcile("apply", ctx, {});
+  await reconcile("sync", ctx, {});
   expect(out()).toContain("pulled 1 commit(s)");
   expect(out()).toContain("boomfile.toml");
   expect(await readFile(join(repo, "boomfile.toml"), "utf8")).toContain('name = "y"');
 });
 
-test("apply reports an unreachable origin but still reconciles from the local clone", async () => {
+test("sync reports an unreachable origin but still reconciles from the local clone", async () => {
   const origin = await originFixture();
   const env = { XDG_STATE_HOME: await base(), NO_COLOR: "1" };
   const repo = await linkRemoteConfigRepo(env, origin);
   await rm(origin, { recursive: true, force: true }); // origin vanishes (moved/deleted/offline)
 
   const { ctx, out } = ctxFor(env, repo);
-  const rc = await reconcile("apply", ctx, {});
+  const rc = await reconcile("sync", ctx, {});
   expect(out()).toContain("could not reach");
   expect(out()).toContain("reconciling from the local clone as-is");
   expect(rc).toBe(0);
 });
 
-test("apply reports a genuine rebase conflict, aborts cleanly, but still reconciles from local state", async () => {
+test("sync reports a genuine rebase conflict, aborts cleanly, but still reconciles from local state", async () => {
   const origin = await originFixture();
   const env = { XDG_STATE_HOME: await base(), NO_COLOR: "1" };
   const repo = await linkRemoteConfigRepo(env, origin);
@@ -231,7 +230,7 @@ test("apply reports a genuine rebase conflict, aborts cleanly, but still reconci
   commitAll(origin, "remote edit");
 
   const { ctx, out } = ctxFor(env, repo);
-  const rc = await reconcile("apply", ctx, {});
+  const rc = await reconcile("sync", ctx, {});
   expect(out()).toContain("pull --rebase failed");
   // never blocks reconciling from the last-known-good (here: locally-committed) state
   expect(await readFile(join(repo, "boomfile.toml"), "utf8")).toContain('name = "local"');
@@ -240,7 +239,7 @@ test("apply reports a genuine rebase conflict, aborts cleanly, but still reconci
   expect(rc).toBe(1);
 });
 
-test("apply pulls a remote change while preserving an uncommitted local edit (autostash)", async () => {
+test("sync pulls a remote change while preserving an uncommitted local edit (autostash)", async () => {
   const origin = await originFixture();
   const env = { XDG_STATE_HOME: await base(), NO_COLOR: "1" };
   const repo = await linkRemoteConfigRepo(env, origin);
@@ -251,14 +250,14 @@ test("apply pulls a remote change while preserving an uncommitted local edit (au
   await writeFile(join(repo, "scratch.txt"), "uncommitted local edit\n");
 
   const { ctx, out } = ctxFor(env, repo);
-  const rc = await reconcile("apply", ctx, {});
+  const rc = await reconcile("sync", ctx, {});
   expect(rc).toBe(0);
   expect(out()).toContain("pulled 1 commit(s)");
   expect(await readFile(join(repo, "boomfile.toml"), "utf8")).toContain('name = "y"');
   expect(await readFile(join(repo, "scratch.txt"), "utf8")).toBe("uncommitted local edit\n");
 });
 
-test("apply --commit commits local edits first, then rebases them onto the pulled remote", async () => {
+test("sync --commit commits local edits first, then rebases them onto the pulled remote", async () => {
   const origin = await originFixture();
   const env = { XDG_STATE_HOME: await base(), NO_COLOR: "1" };
   const repo = await linkRemoteConfigRepo(env, origin);
@@ -269,7 +268,7 @@ test("apply --commit commits local edits first, then rebases them onto the pulle
   await writeFile(join(repo, "scratch.txt"), "local addition\n");
 
   const { ctx, out } = ctxFor(env, repo);
-  const rc = await reconcile("apply", ctx, { commit: true, commitMessage: "test commit" });
+  const rc = await reconcile("sync", ctx, { commit: true, commitMessage: "test commit" });
   expect(rc).toBe(0);
   expect(out()).toContain("committed local changes (test commit)");
   expect(await readFile(join(repo, "boomfile.toml"), "utf8")).toContain('name = "y"');
@@ -279,7 +278,7 @@ test("apply --commit commits local edits first, then rebases them onto the pulle
   expect(git(repo, "status", "--porcelain").stdout.trim()).toBe("");
 });
 
-test("apply --commit with a clean tree pulls normally, without an empty commit", async () => {
+test("sync --commit with a clean tree pulls normally, without an empty commit", async () => {
   const origin = await originFixture();
   const env = { XDG_STATE_HOME: await base(), NO_COLOR: "1" };
   const repo = await linkRemoteConfigRepo(env, origin);
@@ -288,13 +287,13 @@ test("apply --commit with a clean tree pulls normally, without an empty commit",
   commitAll(origin, "add y");
 
   const { ctx, out } = ctxFor(env, repo);
-  const rc = await reconcile("apply", ctx, { commit: true });
+  const rc = await reconcile("sync", ctx, { commit: true });
   expect(rc).toBe(0);
   expect(out()).not.toContain("committed local changes");
   expect(await readFile(join(repo, "boomfile.toml"), "utf8")).toContain('name = "y"');
 });
 
-test("apply --commit commits local edits even when already up to date with origin", async () => {
+test("sync --commit commits local edits even when already up to date with origin", async () => {
   const origin = await originFixture();
   const env = { XDG_STATE_HOME: await base(), NO_COLOR: "1" };
   const repo = await linkRemoteConfigRepo(env, origin);
@@ -303,7 +302,7 @@ test("apply --commit commits local edits even when already up to date with origi
   await writeFile(join(repo, "scratch.txt"), "local addition\n");
 
   const { ctx, out } = ctxFor(env, repo);
-  const rc = await reconcile("apply", ctx, { commit: true, commitMessage: "test commit" });
+  const rc = await reconcile("sync", ctx, { commit: true, commitMessage: "test commit" });
   expect(rc).toBe(0);
   expect(out()).toContain("committed local changes (test commit)");
   expect(git(repo, "log", "-1", "--format=%s").stdout.trim()).toBe("test commit");
@@ -433,41 +432,6 @@ test("doctor warns when no remote config is linked", async () => {
   expect(out()).toContain("no remote config linked");
 });
 
-// ---- commit -----------------------------------------------------------------
-
-test("commit commits local changes in the managed clone", async () => {
-  const origin = await originFixture();
-  const env = { XDG_STATE_HOME: await base(), NO_COLOR: "1" };
-  const repo = await linkRemoteConfigRepo(env, origin);
-  configureIdentity(repo);
-  await writeFile(join(repo, "scratch.txt"), "local addition\n");
-
-  const { ctx, out } = ctxFor(env, repo);
-  const rc = await commitConfigRepo(ctx, "my message");
-  expect(rc).toBe(0);
-  expect(out()).toContain("committed (my message)");
-  expect(git(repo, "status", "--porcelain").stdout.trim()).toBe("");
-  expect(git(repo, "log", "-1", "--format=%s").stdout.trim()).toBe("my message");
-});
-
-test("commit reports nothing to commit on a clean tree", async () => {
-  const origin = await originFixture();
-  const env = { XDG_STATE_HOME: await base(), NO_COLOR: "1" };
-  const repo = await linkRemoteConfigRepo(env, origin);
-
-  const { ctx, out } = ctxFor(env, repo);
-  const rc = await commitConfigRepo(ctx);
-  expect(rc).toBe(0);
-  expect(out()).toContain("nothing to commit");
-});
-
-test("commit fails cleanly when no remote config is linked", async () => {
-  const { ctx, out } = ctxFor({ XDG_STATE_HOME: await base(), NO_COLOR: "1" }, await base());
-  const rc = await commitConfigRepo(ctx);
-  expect(rc).toBe(1);
-  expect(out()).toContain("no remote config linked");
-});
-
 // ---- diff -----------------------------------------------------------------
 
 test("diff reports no local changes on a clean tree", async () => {
@@ -481,7 +445,7 @@ test("diff reports no local changes on a clean tree", async () => {
   expect(out()).toContain("no local changes");
 });
 
-test("diff surfaces an untracked new file the way commit would capture it", async () => {
+test("diff surfaces an untracked new file the way push would capture it", async () => {
   const origin = await originFixture();
   const env = { XDG_STATE_HOME: await base(), NO_COLOR: "1" };
   const repo = await linkRemoteConfigRepo(env, origin);
@@ -537,6 +501,39 @@ test("push sends local commits to the managed clone's origin", async () => {
   const check = await base();
   captureArgv(["git", "clone", "-q", bare, check], {});
   expect(await readFile(join(check, "extra", "file.txt"), "utf8")).toBe("hi\n");
+});
+
+test("push commits local changes with the given message, then pushes them", async () => {
+  const bare = await bareOriginFixture();
+  const env = { XDG_STATE_HOME: await base(), NO_COLOR: "1" };
+  const repo = await linkRemoteConfigRepo(env, bare);
+  configureIdentity(repo);
+  await writeFile(join(repo, "scratch.txt"), "local addition\n");
+
+  const { ctx, out } = ctxFor(env, repo);
+  const rc = await pushConfigRepo(ctx, "my message");
+  expect(rc).toBe(0);
+  expect(out()).toContain("committed (my message)");
+  expect(out()).toContain("pushed");
+  // The commit landed and the tree is clean.
+  expect(git(repo, "status", "--porcelain").stdout.trim()).toBe("");
+  expect(git(repo, "log", "-1", "--format=%s").stdout.trim()).toBe("my message");
+  // The bare origin received it.
+  const check = await base();
+  captureArgv(["git", "clone", "-q", bare, check], {});
+  expect(await readFile(join(check, "scratch.txt"), "utf8")).toBe("local addition\n");
+});
+
+test("push on a clean tree commits nothing and still pushes", async () => {
+  const bare = await bareOriginFixture();
+  const env = { XDG_STATE_HOME: await base(), NO_COLOR: "1" };
+  const repo = await linkRemoteConfigRepo(env, bare);
+
+  const { ctx, out } = ctxFor(env, repo);
+  const rc = await pushConfigRepo(ctx);
+  expect(rc).toBe(0);
+  expect(out()).not.toContain("committed");
+  expect(out()).toContain("pushed");
 });
 
 test("push fails cleanly when no remote config is linked", async () => {

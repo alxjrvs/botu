@@ -22,7 +22,7 @@ of record.
    (`boomfile.toml`), parsed once into the schema in `src/config/schema.ts`.
 3. **Legible showpiece.** Small, exemplary, senior-engineer quality. Comments
    explain the *decision and the gotcha*, not the *what*.
-4. **One model, two surfaces.** `apply`/`verify`/`repair`/`uninstall` are one
+4. **One model, two surfaces.** `sync`/`verify`/`repair`/`uninstall` are one
    verb-parameterized loop (`src/engine/reconcile.ts`) over a resource-type
    registry. Commands are *discovered*, never a growing hardcoded dispatch:
    built-ins are the `@stricli` route map; user commands resolve at runtime from
@@ -35,7 +35,7 @@ of record.
   never touch the real machine. Use `Bun.spawnSync` (not piped `Bun.spawn`) when a
   test spawns the compiled binary (oven-sh/bun#24690).
 - Resources are handlers implementing the verb contract (`src/engine/resources/`);
-  user **hooks** are `hooks/<name>.ts` modules exporting `apply`/`verify`/`repair`
+  user **hooks** are `hooks/<name>.ts` modules exporting `sync`/`verify`/`repair`
   that receive a `HookApi` ( `with` inputs, `ok`/`warn`/`fail`, `dryRun`, `env`).
 - Mutating runs journal to `${XDG_STATE_HOME:-~/.local/state}/boom/journal/` and
   back up displaced files; `boom rollback` replays the journal. Breadcrumbs +
@@ -58,7 +58,7 @@ of record.
   use `Bun.$`/`Bun.spawnSync` only for genuinely external tools (brew/mise/claude).
 - Don't add a hardcoded subcommand case — built-ins go in the route map, everything
   else is command discovery.
-- Don't let `apply`/`verify`/`repair`/`uninstall` drift into separate code paths —
+- Don't let `sync`/`verify`/`repair`/`uninstall` drift into separate code paths —
   they are one loop, parameterized by verb, over the resource registry.
 - Don't pull a CLI framework that breaks `bun build --compile` (oclif/yargs/
   commander's discovery features do) — we use `@stricli/core` for that reason.

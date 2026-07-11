@@ -52,10 +52,10 @@ async function sandbox(boomfile: string): Promise<Sandbox> {
   return { home, repo, ctx, out: () => buf.out };
 }
 
-test("link: apply → verify ok → uninstall removes", async () => {
+test("link: sync → verify ok → uninstall removes", async () => {
   const sb = await sandbox(`[[section]]\nname = "Shell"\nlink = [{ src = ".zshrc", dst = "~/.zshrc" }]\n`);
   await writeFile(join(sb.repo, ".zshrc"), "z\n");
-  expect(await reconcile("apply", sb.ctx, {})).toBe(0);
+  expect(await reconcile("sync", sb.ctx, {})).toBe(0);
   expect(await linkTarget(join(sb.home, ".zshrc"))).toBe(join(sb.repo, ".zshrc"));
   expect(await reconcile("verify", sb.ctx, {})).toBe(0);
   expect(await reconcile("uninstall", sb.ctx, {})).toBe(0);
@@ -66,7 +66,7 @@ test("link: default (no linkMode given) overwrites a foreign file at dst", async
   const sb = await sandbox(`[[section]]\nname = "Shell"\nlink = [{ src = ".zshrc", dst = "~/.zshrc" }]\n`);
   await writeFile(join(sb.repo, ".zshrc"), "z\n");
   await writeFile(join(sb.home, ".zshrc"), "pre-existing, not ours\n");
-  expect(await reconcile("apply", sb.ctx, {})).toBe(0);
+  expect(await reconcile("sync", sb.ctx, {})).toBe(0);
   expect(await linkTarget(join(sb.home, ".zshrc"))).toBe(join(sb.repo, ".zshrc"));
   expect(sb.out()).toContain("overwritten");
 });
@@ -75,7 +75,7 @@ test("link: linkMode skip leaves a foreign file at dst untouched", async () => {
   const sb = await sandbox(`[[section]]\nname = "Shell"\nlink = [{ src = ".zshrc", dst = "~/.zshrc" }]\n`);
   await writeFile(join(sb.repo, ".zshrc"), "z\n");
   await writeFile(join(sb.home, ".zshrc"), "pre-existing, not ours\n");
-  expect(await reconcile("apply", sb.ctx, { linkMode: "skip" })).toBe(0);
+  expect(await reconcile("sync", sb.ctx, { linkMode: "skip" })).toBe(0);
   expect(await linkTarget(join(sb.home, ".zshrc"))).toBeUndefined();
   expect(await readFile(join(sb.home, ".zshrc"), "utf8")).toBe("pre-existing, not ours\n");
   expect(sb.out()).toContain("exists but is not our symlink — skipped");
@@ -85,7 +85,7 @@ test("link: --dry-run warns it would overwrite a foreign file, and changes nothi
   const sb = await sandbox(`[[section]]\nname = "Shell"\nlink = [{ src = ".zshrc", dst = "~/.zshrc" }]\n`);
   await writeFile(join(sb.repo, ".zshrc"), "z\n");
   await writeFile(join(sb.home, ".zshrc"), "pre-existing, not ours\n");
-  expect(await reconcile("apply", sb.ctx, { dryRun: true })).toBe(0);
+  expect(await reconcile("sync", sb.ctx, { dryRun: true })).toBe(0);
   expect(sb.out()).toContain("would overwrite an existing file");
   expect(await linkTarget(join(sb.home, ".zshrc"))).toBeUndefined();
   expect(await readFile(join(sb.home, ".zshrc"), "utf8")).toBe("pre-existing, not ours\n");
@@ -108,7 +108,7 @@ test("verify fails (exit 1) when a link is missing", async () => {
 test("dry-run changes nothing", async () => {
   const sb = await sandbox(`[[section]]\nname = "S"\nlink = [{ src = ".z", dst = "~/.z" }]\n`);
   await writeFile(join(sb.repo, ".z"), "z");
-  expect(await reconcile("apply", sb.ctx, { dryRun: true })).toBe(0);
+  expect(await reconcile("sync", sb.ctx, { dryRun: true })).toBe(0);
   expect(await pathExists(join(sb.home, ".z"))).toBe(false);
 });
 
@@ -118,7 +118,7 @@ test("--only runs just the named section", async () => {
   );
   await writeFile(join(sb.repo, ".a"), "a");
   await writeFile(join(sb.repo, ".b"), "b");
-  await reconcile("apply", sb.ctx, { only: ["a"] });
+  await reconcile("sync", sb.ctx, { only: ["a"] });
   expect(await pathExists(join(sb.home, ".a"))).toBe(true);
   expect(await pathExists(join(sb.home, ".b"))).toBe(false);
 });
@@ -129,30 +129,28 @@ test("copy installs a real file and verifies", async () => {
   );
   await mkdir(join(sb.repo, "bin"), { recursive: true });
   await writeFile(join(sb.repo, "bin/tool"), "#!/bin/sh\n");
-  expect(await reconcile("apply", sb.ctx, {})).toBe(0);
+  expect(await reconcile("sync", sb.ctx, {})).toBe(0);
   expect(await pathExists(join(sb.home, ".local/bin/tool"))).toBe(true);
   expect(await reconcile("verify", sb.ctx, {})).toBe(0);
 });
 
-test("run step fires on apply", async () => {
+test("run step fires on sync", async () => {
   const sb = await sandbox(
-    `[[section]]\nname = "S"\nrun = [{ on = "apply", cmd = 'touch "$HOME/marker"' }]\n`,
+    `[[section]]\nname = "S"\nrun = [{ on = "sync", cmd = 'touch "$HOME/marker"' }]\n`,
   );
-  expect(await reconcile("apply", sb.ctx, {})).toBe(0);
+  expect(await reconcile("sync", sb.ctx, {})).toBe(0);
   expect(await pathExists(join(sb.home, "marker"))).toBe(true);
 });
 
 test("run step executes in the repo, independent of the invocation cwd", async () => {
-  // The step records its own working dir. apply must run it from the dotfiles repo
+  // The step records its own working dir. sync must run it from the dotfiles repo
   // (so e.g. `lefthook install` targets the repo's `.git`), NOT from process.cwd().
-  const sb = await sandbox(
-    `[[section]]\nname = "S"\nrun = [{ on = "apply", cmd = 'pwd > "$HOME/where"' }]\n`,
-  );
+  const sb = await sandbox(`[[section]]\nname = "S"\nrun = [{ on = "sync", cmd = 'pwd > "$HOME/where"' }]\n`);
   const elsewhere = await mkdtemp(join(tmpdir(), "boom-cwd-"));
   const prev = process.cwd();
   process.chdir(elsewhere); // invoke from somewhere other than the repo
   try {
-    expect(await reconcile("apply", sb.ctx, {})).toBe(0);
+    expect(await reconcile("sync", sb.ctx, {})).toBe(0);
   } finally {
     process.chdir(prev);
   }
@@ -162,12 +160,12 @@ test("run step executes in the repo, independent of the invocation cwd", async (
   expect(realpathSync(where)).not.toBe(realpathSync(elsewhere));
 });
 
-test("run step with on = uninstall fires on uninstall, not apply", async () => {
+test("run step with on = uninstall fires on uninstall, not sync", async () => {
   const sb = await sandbox(
     `[[section]]\nname = "S"\nrun = [{ on = "uninstall", cmd = 'touch "$HOME/torn-down"' }]\n`,
   );
-  expect(await reconcile("apply", sb.ctx, {})).toBe(0);
-  expect(await pathExists(join(sb.home, "torn-down"))).toBe(false); // not on apply
+  expect(await reconcile("sync", sb.ctx, {})).toBe(0);
+  expect(await pathExists(join(sb.home, "torn-down"))).toBe(false); // not on sync
   expect(await reconcile("uninstall", sb.ctx, {})).toBe(0);
   expect(await pathExists(join(sb.home, "torn-down"))).toBe(true); // fires on uninstall
 });
@@ -179,16 +177,16 @@ test("hook runs a TS resource module with its inputs", async () => {
   await mkdir(join(sb.repo, "hooks"), { recursive: true });
   await writeFile(
     join(sb.repo, "hooks/greet.ts"),
-    `export function apply(api) { api.ok("hello " + api.with.who); }\n`,
+    `export function sync(api) { api.ok("hello " + api.with.who); }\n`,
   );
-  expect(await reconcile("apply", sb.ctx, {})).toBe(0);
+  expect(await reconcile("sync", sb.ctx, {})).toBe(0);
   expect(sb.out()).toContain("hello world");
 });
 
 // A fake `brew` on PATH that just logs its argv — real `brew bundle` isn't installable
 // in CI, but the argv it's invoked with is exactly the behavior under test: plain
-// apply must not silently upgrade outdated formulae (Homebrew Bundle's own default),
-// and `update`/`apply --upgrade` must be the one opt-in path that does.
+// sync must not silently upgrade outdated formulae (Homebrew Bundle's own default),
+// and `update`/`sync --upgrade` must be the one opt-in path that does.
 async function fakeBrew(
   repo: string,
   env: Record<string, string | undefined>,
@@ -209,18 +207,18 @@ async function fakeBrew(
   };
 }
 
-test("brewfile: apply passes --no-upgrade; update/apply --upgrade omits it", async () => {
+test("brewfile: sync passes --no-upgrade; update/sync --upgrade omits it", async () => {
   const sb = await sandbox(`[[section]]\nname = "Pkg"\nbrewfile = "Brewfile"\n`);
   await writeFile(join(sb.repo, "Brewfile"), "");
   const calls = await fakeBrew(sb.repo, sb.ctx.env as Record<string, string | undefined>);
 
-  expect(await reconcile("apply", sb.ctx, {})).toBe(0);
-  expect(await reconcile("apply", sb.ctx, { upgrade: true })).toBe(0);
+  expect(await reconcile("sync", sb.ctx, {})).toBe(0);
+  expect(await reconcile("sync", sb.ctx, { upgrade: true })).toBe(0);
   expect(await reconcile("verify", sb.ctx, {})).toBe(0);
 
   const argvLines = await calls();
   expect(argvLines).toHaveLength(3);
-  expect(argvLines[0]).toContain("--no-upgrade"); // plain apply
-  expect(argvLines[1]).not.toContain("--no-upgrade"); // apply --upgrade (= update)
-  expect(argvLines[2]).toContain("--no-upgrade"); // verify mirrors apply's default
+  expect(argvLines[0]).toContain("--no-upgrade"); // plain sync
+  expect(argvLines[1]).not.toContain("--no-upgrade"); // sync --upgrade (= update)
+  expect(argvLines[2]).toContain("--no-upgrade"); // verify mirrors sync's default
 });

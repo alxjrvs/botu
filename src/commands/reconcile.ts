@@ -24,7 +24,7 @@ const jsonFlag = { kind: "boolean", optional: true, brief: "Emit a structured JS
 
 type OnlyFlags = { only?: string[]; json?: boolean; profile?: string[] };
 type VerifyFlags = { only?: string[]; json?: boolean; profile?: string[] };
-type ApplyFlags = {
+type SyncFlags = {
   dryRun?: boolean;
   skip?: boolean;
   resume?: boolean;
@@ -42,13 +42,13 @@ function linkModeOf(flags: { skip?: boolean }): LinkMode {
   return flags.skip ? "skip" : "overwrite";
 }
 
-export const applyCommand = buildCommand<ApplyFlags, [], BoomContext>({
+export const syncCommand = buildCommand<SyncFlags, [], BoomContext>({
   docs: { brief: "Reconcile your machine from the boomfile — make it so" },
   parameters: {
     flags: {
       dryRun: { kind: "boolean", optional: true, brief: "Show what would change; change nothing" },
       skip: { kind: "boolean", optional: true, brief: "Skip conflicting targets instead of overwriting" },
-      resume: { kind: "boolean", optional: true, brief: "Continue an interrupted apply (skip done steps)" },
+      resume: { kind: "boolean", optional: true, brief: "Continue an interrupted sync (skip done steps)" },
       commit: {
         kind: "boolean",
         optional: true,
@@ -72,7 +72,7 @@ export const applyCommand = buildCommand<ApplyFlags, [], BoomContext>({
     aliases: { s: "skip", m: "message" },
   },
   async func(flags) {
-    this.process.exitCode = await reconcile("apply", this, {
+    this.process.exitCode = await reconcile("sync", this, {
       only: flags.only,
       dryRun: flags.dryRun,
       resume: flags.resume,
@@ -105,7 +105,7 @@ export const verifyCommand = buildCommand<VerifyFlags, [], BoomContext>({
 });
 
 export const repairCommand = buildCommand<OnlyFlags, [], BoomContext>({
-  docs: { brief: "Repair drift (apply, overwriting conflicts)" },
+  docs: { brief: "Repair drift (sync, overwriting conflicts)" },
   parameters: { flags: { only: onlyFlag, profile: profileFlag, json: jsonFlag } },
   async func(flags) {
     this.process.exitCode = await reconcile("repair", this, {

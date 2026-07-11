@@ -130,22 +130,22 @@ into = "~/.config/zsh/"
 name = "SSH perms"
 
 [[section.run]]
-on = "apply"
+on = "sync"
 cmd = "chmod 700 ~/.ssh"
 
 [[section.run]]
-on = "apply"
+on = "sync"
 cmd = "mkdir -p ~/.ssh/cm"
 
 [[section.run]]
-on = "apply"
+on = "sync"
 cmd = "chmod 700 ~/.ssh/cm"
 
 [[section]]
 name = "lefthook"
 
 [[section.run]]
-on = "apply"
+on = "sync"
 cmd = "lefthook install"
 
 [[section]]
@@ -156,7 +156,7 @@ src = "hooks/op-agent.sh"
 dst = "~/.local/bin/op-agent"
 
 [[section.run]]
-on = "apply"
+on = "sync"
 cmd = "op-agent provision"
 
 [[section.run]]

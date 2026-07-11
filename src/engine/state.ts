@@ -1,6 +1,6 @@
 // boom's on-disk state under ${XDG_STATE_HOME:-~/.local/state}/boom/:
 //   manifest          TSV of destinations boom owns (orphan reaping)
-//   journal/<id>.ndjson  per-run transaction log (apply/fix)
+//   journal/<id>.ndjson  per-run transaction log (sync/repair)
 //   backups/<id>/...  files displaced by an overwrite (so rollback can restore)
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";

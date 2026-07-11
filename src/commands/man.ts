@@ -27,9 +27,9 @@ boom reconciles a machine from a declarative
 packages, running steps and hooks \\(em and opens
 portals to your code workspaces.
 It is a single self-contained binary.
-The reconcile verbs (apply, verify, repair,
+The reconcile commands (source, verify, repair,
 uninstall) share one loop over a resource registry,
-and rollback undoes the most recent apply.
+and rollback undoes the most recent source run.
 .SH COMMANDS
 ${commands}
 .SH FILES
@@ -48,7 +48,7 @@ Override the dotfiles repo boom resolves.
 Override the auto-detected OS / hostname used to gate sections.
 .SH SEE ALSO
 .BR boom-verify (1),
-.BR boom-apply (1)
+.BR boom-source (1)
 `;
 }
 

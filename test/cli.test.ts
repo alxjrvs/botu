@@ -38,13 +38,13 @@ test("--help lists the core verbs", async () => {
   const { buf, ctx } = fakeContext();
   await run(app, ["--help"], ctx);
   const text = buf.out + buf.err;
-  expect(text).toContain("apply");
+  expect(text).toContain("source");
   expect(text).toContain("verify");
 });
 
 test("a known verb routes to the engine", async () => {
   const { buf, ctx } = fakeContext();
-  await run(app, ["apply"], ctx);
+  await run(app, ["source"], ctx);
   expect(buf.err).toContain("no dotfiles repo");
 });
 
@@ -54,9 +54,9 @@ test("an unknown command reports an error", async () => {
   expect(buf.err.length).toBeGreaterThan(0);
 });
 
-test("apply accepts --commit/-m", async () => {
+test("source accepts --commit/-m", async () => {
   const { buf, ctx } = fakeContext();
-  await run(app, ["apply", "--commit", "-m", "wip"], ctx);
+  await run(app, ["source", "--commit", "-m", "wip"], ctx);
   // cwd resolves no config — proves the flags parsed, not that a git sync ran.
   expect(buf.err).toContain("no dotfiles repo");
 });

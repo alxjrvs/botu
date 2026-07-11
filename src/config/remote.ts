@@ -1,7 +1,7 @@
 // Config source is always a git remote (repo-only): `boom source set` takes a
 // remote reference — `owner/repo`, `github:owner/repo`, a full git URL, optionally
 // `@ref` — clone it into the boom-managed cache dir, and record the breadcrumb.
-// engine/sync.ts owns the ongoing fetch/pull-and-report on every apply/verify/fix;
+// engine/sync.ts owns the ongoing fetch/pull-and-report on every sync/verify/repair;
 // this file owns only the initial (re-)clone.
 import { mkdir, rename, rm } from "node:fs/promises";
 import { dirname, isAbsolute } from "node:path";
@@ -85,9 +85,9 @@ export async function linkRemoteConfigRepo(env: Env, refInput: string): Promise<
 
   // Clone-validate-swap: the new repo is cloned and vetted in a staging dir, and the
   // existing clone is replaced only after every check passes. Wiping dest up front
-  // would turn a failed link (typo'd repo, offline, bad @ref) into lost offline-apply
+  // would turn a failed link (typo'd repo, offline, bad @ref) into lost offline-sync
   // capability — or worse, leave a *different* repo's working tree at the path the
-  // still-unrewritten breadcrumb names, and the next apply would reconcile from it.
+  // still-unrewritten breadcrumb names, and the next sync would reconcile from it.
   const staging = `${dest}.staging`;
   await mkdir(dirname(dest), { recursive: true });
   await rm(staging, { recursive: true, force: true }); // leftover from a crashed link
