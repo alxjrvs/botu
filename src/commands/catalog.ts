@@ -14,11 +14,38 @@ export interface CommandInfo {
   readonly brief: string;
 }
 
+export interface FlagInfo {
+  readonly flag: string; // the CLI spelling, kebab-cased and `--`-prefixed
+  readonly brief: string;
+}
+
 export function commandList(): readonly CommandInfo[] {
   return routes
     .getAllEntries()
     .filter((e) => !e.hidden)
     .map((e) => ({ name: e.name.original, brief: e.target.brief }));
+}
+
+// Stricli stores flags under their camelCase key; the CLI accepts them kebab-cased
+// (scanner caseStyle "allow-kebab-for-camel"), so `dryRun` completes/documents as `--dry-run`.
+const camelToKebab = (s: string): string => s.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
+
+// The flags a routing target accepts, DERIVED from its Stricli parameters (a namespace/route
+// map has none). One source of truth again — completions and the man page read this instead
+// of a hand-maintained flag table that would drift from each command's real parameters.
+function flagsOfTarget(target: { parameters?: { flags?: Record<string, { brief?: string }> } }): FlagInfo[] {
+  const flags = target.parameters?.flags;
+  if (!flags) return [];
+  return Object.entries(flags).map(([name, def]) => ({
+    flag: `--${camelToKebab(name)}`,
+    brief: def.brief ?? "",
+  }));
+}
+
+// Flags for a top-level command by name (empty for a namespace or unknown name).
+export function commandFlags(name: string): readonly FlagInfo[] {
+  const entry = routes.getAllEntries().find((e) => !e.hidden && e.name.original === name);
+  return entry ? flagsOfTarget(entry.target as never) : [];
 }
 
 export function commandNames(): readonly string[] {
@@ -30,9 +57,12 @@ export function commandNames(): readonly string[] {
 // can offer a second level without a hand-maintained table. A route map exposes
 // getAllEntries; a leaf command does not — that `in` check is the one-level-deeper form
 // of index.ts asking the route map itself what it routes.
+export interface SubcommandInfo extends CommandInfo {
+  readonly flags: readonly FlagInfo[];
+}
 export interface SubcommandGroup {
   readonly parent: string;
-  readonly children: readonly CommandInfo[];
+  readonly children: readonly SubcommandInfo[];
 }
 
 export function subcommandGroups(): readonly SubcommandGroup[] {
@@ -44,7 +74,11 @@ export function subcommandGroups(): readonly SubcommandGroup[] {
     const children = target
       .getAllEntries()
       .filter((c) => !c.hidden)
-      .map((c) => ({ name: c.name.original, brief: c.target.brief }));
+      .map((c) => ({
+        name: c.name.original,
+        brief: c.target.brief,
+        flags: flagsOfTarget(c.target as never),
+      }));
     if (children.length > 0) groups.push({ parent: e.name.original, children });
   }
   return groups;

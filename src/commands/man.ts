@@ -3,15 +3,32 @@
 import { buildCommand } from "@stricli/core";
 import type { BoomContext } from "../context.ts";
 import { VERSION } from "../lib/version.ts";
-import { commandList } from "./catalog.ts";
+import { commandFlags, commandList, type FlagInfo, subcommandGroups } from "./catalog.ts";
 
 // Escape the roff comment/escape lead-in. Briefs never start a line with a control
 // char (they follow .B on the previous line), so only the escape char needs guarding.
 const roff = (s: string): string => s.replace(/\\/g, "\\\\");
 
+// Flags as a roff sub-list, indented under their command with .RS/.RE. Empty for a command
+// (or namespace) that takes none, so it contributes nothing.
+const flagBlock = (flags: readonly FlagInfo[]): string =>
+  flags.length === 0
+    ? ""
+    : `\n.RS\n${flags.map((f) => `.TP\n.B ${f.flag}\n${roff(f.brief)}`).join("\n")}\n.RE`;
+
 export function manPage(version: string): string {
   const commands = commandList()
-    .map((c) => `.TP\n.B ${c.name}\n${roff(c.brief)}`)
+    .map((c) => `.TP\n.B ${c.name}\n${roff(c.brief)}${flagBlock(commandFlags(c.name))}`)
+    .join("\n");
+  // Nested routes (source/code/mcp subcommands) with their own flags — so the man page is
+  // as complete as `--help`, not just a top-level index.
+  const subcommands = subcommandGroups()
+    .map((g) => {
+      const subs = g.children
+        .map((c) => `.TP\n.B ${g.parent} ${c.name}\n${roff(c.brief)}${flagBlock(c.flags)}`)
+        .join("\n");
+      return `.SS ${g.parent}\n${subs}`;
+    })
     .join("\n");
   return `.TH BOOM 1 "" "boom ${version}" "boom manual"
 .SH NAME
@@ -32,6 +49,8 @@ repair, uninstall) share one loop over a resource
 registry, and rollback undoes the most recent sync.
 .SH COMMANDS
 ${commands}
+.SH SUBCOMMANDS
+${subcommands}
 .SH FILES
 .TP
 .I boomfile.toml

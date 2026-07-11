@@ -97,6 +97,16 @@ test("hasCommand resolves via PATH (Bun.which), not a shell", () => {
   expect(hasCommand("definitely-not-a-real-binary-xyz", process.env)).toBe(false);
 });
 
+test("completions include flag names derived from the route map", () => {
+  for (const shell of ["bash", "zsh", "fish"] as const) {
+    const s = completionScript(shell);
+    // `dry-run`/`json` are flags, not command names — so their presence proves flag
+    // derivation, and it can't be confused with a command word.
+    expect(s).toContain("dry-run");
+    expect(s).toContain("json");
+  }
+});
+
 // ---- man ---------------------------------------------------------------------
 
 test("man page is valid-ish roff naming every command", () => {
@@ -104,6 +114,13 @@ test("man page is valid-ish roff naming every command", () => {
   expect(m).toContain('.TH BOOM 1 "" "boom 9.9.9"');
   expect(m).toContain(".SH COMMANDS");
   for (const c of commandList()) expect(m).toContain(`.B ${c.name}`);
+});
+
+test("man page documents nested subcommands and their flags", () => {
+  const m = manPage("9.9.9");
+  expect(m).toContain(".SH SUBCOMMANDS");
+  expect(m).toContain(".B source sync"); // a nested route, now documented
+  expect(m).toContain("--json"); // a flag, now documented under its command
 });
 
 // ---- skill -------------------------------------------------------------------
