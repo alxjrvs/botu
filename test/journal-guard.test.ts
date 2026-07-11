@@ -1,27 +1,45 @@
-// The journal is a crash-recovery log: rollback and --resume read it precisely after an
-// interrupted run. A crash mid-append can leave a torn final line — parsing it must skip
-// that record, not throw out of the recovery path. Guards journal.ts's `records()`.
+// The sqlite-backed journal (db.ts/journal.ts): ops/sides round-trip, and — the crash-
+// recovery property that used to need a torn-line guard on the NDJSON log — an interrupted
+// run (never committed, its connection never closed) is still fully readable by a fresh
+// connection, because each row is committed atomically as it's written.
 import { expect, test } from "bun:test";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { listRuns, readRun } from "../src/engine/journal.ts";
-import { journalDir } from "../src/engine/state.ts";
+import { Journal, listRuns, readRun } from "../src/engine/journal.ts";
 
-test("readRun / listRuns survive a torn trailing line", async () => {
-  const env = { XDG_STATE_HOME: await mkdtemp(join(tmpdir(), "boom-jrn-")) };
-  const dir = journalDir(env);
-  await mkdir(dir, { recursive: true });
-  const id = "2020-01-01T00-00-00-000Z-1-0000";
-  const good = JSON.stringify({ t: "done", op: "link", dst: "/x", undo: { kind: "remove" } });
-  // one good record, a committed marker, then a half-written final record (crash mid-write)
-  await writeFile(join(dir, `${id}.ndjson`), `${good}\n${JSON.stringify({ t: "committed" })}\n{"t":"do`);
+async function stateEnv(): Promise<{ XDG_STATE_HOME: string }> {
+  return { XDG_STATE_HOME: await mkdtemp(join(tmpdir(), "boom-jrn-")) };
+}
+
+test("journal round-trips done ops + side effects and marks the run committed", async () => {
+  const env = await stateEnv();
+  const j = new Journal(env, "run-a");
+  await j.intent("link", "/x");
+  await j.done("link", "/x", { kind: "remove" });
+  await j.side("run", "echo hi");
+  await j.commit();
 
   const run = await readRun(env);
+  expect(run?.runId).toBe("run-a");
   expect(run?.done).toHaveLength(1);
   expect(run?.done[0]?.dst).toBe("/x");
+  expect(run?.done[0]?.undo).toEqual({ kind: "remove" });
+  expect(run?.sides[0]?.label).toBe("echo hi");
 
   const runs = await listRuns(env);
   expect(runs[0]?.ops).toBe(1);
+  expect(runs[0]?.sides).toBe(1);
   expect(runs[0]?.committed).toBe(true);
+});
+
+test("an interrupted (uncommitted) run is still readable by a fresh connection", async () => {
+  const env = await stateEnv();
+  const j = new Journal(env, "run-b");
+  await j.done("link", "/y", { kind: "remove" });
+  // no commit() and no close() — simulates a crash mid-run; the row is already durable.
+  const runs = await listRuns(env);
+  expect(runs[0]?.committed).toBe(false);
+  expect(runs[0]?.ops).toBe(1);
+  expect((await readRun(env))?.done[0]?.dst).toBe("/y");
 });

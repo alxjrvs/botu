@@ -1,9 +1,12 @@
 // boom's on-disk state under ${XDG_STATE_HOME:-~/.local/state}/boom/:
-//   manifest          TSV of destinations boom owns (orphan reaping)
-//   journal/<id>.ndjson  per-run transaction log (sync/repair)
+//   state.db          bun:sqlite store — the owned-destinations manifest + the per-run
+//                     transaction journal (see db.ts / journal.ts)
 //   backups/<id>/...  files displaced by an overwrite (so rollback can restore)
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+// The manifest was a hand-parsed TSV file before; it now lives in state.db, with a one-time
+// import of any legacy TSV so orphan reaping doesn't reset across the upgrade.
+import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { withDb } from "./db.ts";
 
 export type Env = Record<string, string | undefined>;
 
@@ -22,17 +25,52 @@ export function stateHome(env: Env): string {
 export function boomStateDir(env: Env): string {
   return join(stateHome(env), "boom");
 }
+// The pre-sqlite manifest path — retained only to import a legacy TSV once (see below).
 export function manifestPath(env: Env): string {
   return join(boomStateDir(env), "manifest");
-}
-export function journalDir(env: Env): string {
-  return join(boomStateDir(env), "journal");
 }
 export function backupsDir(env: Env): string {
   return join(boomStateDir(env), "backups");
 }
 
+interface ManifestRow {
+  kind: string;
+  dst: string;
+  src: string;
+}
+const toEntry = (r: ManifestRow): ManifestEntry => ({
+  kind: r.kind === "copy" ? "copy" : "link",
+  dst: r.dst,
+  src: r.src,
+});
+
 export async function readManifest(env: Env): Promise<ManifestEntry[]> {
+  const rows = withDb(env, (db) => db.query("SELECT kind, dst, src FROM manifest").all() as ManifestRow[]);
+  if (rows.length > 0) return rows.map(toEntry);
+  // Empty DB manifest → import a legacy TSV once (pre-sqlite state), so an upgrade doesn't
+  // forget what boom owns and then fail to reap a since-dropped link. Consumed, then removed.
+  const legacy = await readLegacyManifest(env);
+  if (legacy.length > 0) {
+    await writeManifest(env, legacy);
+    await rm(manifestPath(env), { force: true });
+  }
+  return legacy;
+}
+
+export async function writeManifest(env: Env, entries: readonly ManifestEntry[]): Promise<void> {
+  withDb(env, (db) => {
+    const replace = db.transaction((es: readonly ManifestEntry[]) => {
+      db.run("DELETE FROM manifest");
+      const ins = db.query("INSERT INTO manifest (dst, kind, src) VALUES (?, ?, ?)");
+      for (const e of es) ins.run(e.dst, e.kind, e.src);
+    });
+    replace(entries);
+  });
+}
+
+// Parse the pre-sqlite TSV manifest (`kind\tdst\tsrc`, with a tab-less pre-TSV bare-dst
+// fallback), or [] if none exists. Only reached during the one-time import above.
+async function readLegacyManifest(env: Env): Promise<ManifestEntry[]> {
   let text: string;
   try {
     text = await readFile(manifestPath(env), "utf8");
@@ -42,8 +80,6 @@ export async function readManifest(env: Env): Promise<ManifestEntry[]> {
   const out: ManifestEntry[] = [];
   for (const line of text.split("\n")) {
     if (line.length === 0) continue;
-    // TSV `kind\tdst\tsrc`. A tab-less line is the pre-TSV format (bare dst) — read it
-    // as a link so older manifests keep reaping correctly across an upgrade.
     const parts = line.split("\t");
     if (parts.length >= 3)
       out.push({
@@ -54,10 +90,4 @@ export async function readManifest(env: Env): Promise<ManifestEntry[]> {
     else out.push({ kind: "link", dst: parts[0] as string, src: "" });
   }
   return out;
-}
-
-export async function writeManifest(env: Env, entries: readonly ManifestEntry[]): Promise<void> {
-  await mkdir(boomStateDir(env), { recursive: true });
-  const body = entries.map((e) => `${e.kind}\t${e.dst}\t${e.src}`).join("\n");
-  await writeFile(manifestPath(env), body.length > 0 ? `${body}\n` : "");
 }

@@ -1,10 +1,13 @@
-// The sync transaction journal: an append-only NDJSON log per run. Each mutation
-// writes an `intent` then a `done` (with an undo token); a clean run ends `committed`.
-// rollback replays `done` records in reverse; --resume skips destinations already done.
-import { appendFile, mkdir, readdir, readFile, rm } from "node:fs/promises";
-import { dirname, join } from "node:path";
+// The sync transaction journal, backed by bun:sqlite (db.ts). Each mutation writes an
+// `intent` then a `done` (with an undo token); a clean run marks the run `committed`.
+// rollback replays `done` rows in reverse; --resume skips destinations already done. Each
+// row commits atomically (WAL), so an interrupted run leaves whole rows — no torn-line
+// recovery hazard the old NDJSON log had.
+import type { Database } from "bun:sqlite";
+import { rm } from "node:fs/promises";
 import { backupTo } from "../lib/fs.ts";
-import { backupsDir, type Env, journalDir } from "./state.ts";
+import { openDb, withDb } from "./db.ts";
+import { backupsDir, type Env } from "./state.ts";
 
 // How to reverse one mutation: remove what we created, or restore a backed-up file.
 export type UndoToken = { kind: "remove" } | { kind: "restore"; from: string };
@@ -27,137 +30,112 @@ export async function displace(
 }
 
 export interface DoneRecord {
-  t: "done";
   op: string;
   dst: string;
   undo: UndoToken;
 }
 
-// A non-reversible side effect (a `run` step or `hook`) — journaled so rollback can
-// warn the operator that replaying the run cannot undo it.
+// A non-reversible side effect (a `run` step or `hook`) — recorded so rollback can warn the
+// operator that replaying the run cannot undo it.
 export interface SideRecord {
-  t: "side";
   op: string;
   label: string;
 }
 
 // Per-process monotonic tie-breaker. The ISO timestamp only resolves to the millisecond,
 // so two runs in one process within the same millisecond (back-to-back syncs — common in
-// tests, possible in a script) would otherwise collide on runId and share one journal file,
-// cross-contaminating each other's records. Zero-padded so it also sorts chronologically.
+// tests, possible in a script) would otherwise collide on runId. Zero-padded so it also
+// sorts chronologically.
 let runSeq = 0;
 
 export function newRunId(): string {
-  // ISO timestamp (lexically sortable = chronological) + pid for intra-machine uniqueness
-  // + a per-process sequence so same-millisecond runs never share an id.
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   return `${stamp}-${process.pid}-${String(runSeq++).padStart(4, "0")}`;
 }
 
 export class Journal {
-  private readonly file: string;
-  private dirReady = false;
+  private readonly db: Database;
   readonly runId: string;
 
   constructor(env: Env, runId: string) {
     this.runId = runId;
-    this.file = join(journalDir(env), `${runId}.ndjson`);
-  }
-
-  private async append(obj: unknown): Promise<void> {
-    // Create the journal dir once (on the first record), not before every append — the
-    // redundant per-record mkdir was the real waste. The write itself stays a durable
-    // appendFile (open→write→close): this is a crash-recovery log that rollback/--resume
-    // read back — including, in-process, immediately after the run — so each record must
-    // be on disk the instant its append resolves. A buffered FileSink can't promise that.
-    if (!this.dirReady) {
-      await mkdir(dirname(this.file), { recursive: true });
-      this.dirReady = true;
-    }
-    await appendFile(this.file, `${JSON.stringify(obj)}\n`);
+    this.db = openDb(env);
+    this.db.run("INSERT OR IGNORE INTO runs (run_id, committed) VALUES (?, 0)", [runId]);
   }
 
   intent(op: string, dst: string): Promise<void> {
-    return this.append({ t: "intent", op, dst });
+    this.db.run("INSERT INTO ops (run_id, t, op, dst) VALUES (?, 'intent', ?, ?)", [this.runId, op, dst]);
+    return Promise.resolve();
   }
   done(op: string, dst: string, undo: UndoToken): Promise<void> {
-    return this.append({ t: "done", op, dst, undo });
+    this.db.run("INSERT INTO ops (run_id, t, op, dst, undo) VALUES (?, 'done', ?, ?, ?)", [
+      this.runId,
+      op,
+      dst,
+      JSON.stringify(undo),
+    ]);
+    return Promise.resolve();
   }
   side(op: string, label: string): Promise<void> {
-    return this.append({ t: "side", op, label });
+    this.db.run("INSERT INTO sides (run_id, op, label) VALUES (?, ?, ?)", [this.runId, op, label]);
+    return Promise.resolve();
   }
   commit(): Promise<void> {
-    return this.append({ t: "committed" });
+    this.db.run("UPDATE runs SET committed = 1 WHERE run_id = ?", [this.runId]);
+    this.db.close();
+    return Promise.resolve();
   }
 }
 
-// Keep the last `keep` runs; delete older journals and their backup trees. Rollback
-// only ever reads the most recent run, so unbounded journals + full backup copies are
-// pure accumulation. Called after a clean commit.
+// Keep the last `keep` runs; delete older runs (rows + their backup trees). Rollback only
+// ever reads the most recent run, so unbounded history is pure accumulation. Runs are
+// deleted oldest-first — run ids sort chronologically. Called after a clean commit.
 export async function pruneRuns(env: Env, keep = 10): Promise<void> {
-  const dir = journalDir(env);
-  let files: string[];
-  try {
-    files = (await readdir(dir)).filter((f) => f.endsWith(".ndjson")).sort();
-  } catch {
-    return;
-  }
-  for (const f of files.slice(0, Math.max(0, files.length - keep))) {
-    const id = f.replace(/\.ndjson$/, "");
-    await rm(join(dir, f), { force: true });
-    await rm(join(backupsDir(env), id), { recursive: true, force: true });
-  }
-}
-
-// Parse NDJSON records, skipping blank lines and any torn/partial trailing line a crash
-// mid-append can leave behind. The journal is a crash-recovery log read by rollback and
-// --resume *precisely* after an interrupted run — so one malformed line must degrade to
-// "skip that record", never throw out of the recovery path it exists to serve.
-function* records(text: string): Generator<{ t: string; [k: string]: unknown }> {
-  for (const line of text.split("\n")) {
-    if (line.length === 0) continue;
-    try {
-      yield JSON.parse(line);
-    } catch {
-      // torn/partial line (crash mid-write) — skip it, keep reading the rest
+  const stale = withDb(env, (db) => {
+    const ids = (db.query("SELECT run_id FROM runs ORDER BY run_id").all() as { run_id: string }[]).map(
+      (r) => r.run_id,
+    );
+    const drop = ids.slice(0, Math.max(0, ids.length - keep));
+    const delRun = db.query("DELETE FROM runs WHERE run_id = ?");
+    const delOps = db.query("DELETE FROM ops WHERE run_id = ?");
+    const delSides = db.query("DELETE FROM sides WHERE run_id = ?");
+    for (const id of drop) {
+      delOps.run(id);
+      delSides.run(id);
+      delRun.run(id);
     }
-  }
+    return drop;
+  });
+  for (const id of stale) await rm(`${backupsDir(env)}/${id}`, { recursive: true, force: true });
 }
 
-// Read a run's `done` + `side` records (the most recent run if `runId` is omitted).
+// Read a run's `done` + `side` records (the most recent run if `runId` is omitted). done
+// rows come back in insertion order (ORDER BY id), so rollback's reverse replay is correct.
 export async function readRun(
   env: Env,
   runId?: string,
 ): Promise<{ runId: string; done: DoneRecord[]; sides: SideRecord[] } | undefined> {
-  const dir = journalDir(env);
-  let id = runId;
-  if (!id) {
-    try {
-      const files = (await readdir(dir)).filter((f) => f.endsWith(".ndjson")).sort();
-      id = files.at(-1)?.replace(/\.ndjson$/, "");
-    } catch {
-      return undefined;
-    }
-  }
-  if (!id) return undefined;
-  let text: string;
-  try {
-    text = await readFile(join(dir, `${id}.ndjson`), "utf8");
-  } catch {
-    return undefined;
-  }
-  const done: DoneRecord[] = [];
-  const sides: SideRecord[] = [];
-  for (const rec of records(text)) {
-    if (rec.t === "done") done.push(rec as unknown as DoneRecord);
-    else if (rec.t === "side") sides.push(rec as unknown as SideRecord);
-  }
-  return { runId: id, done, sides };
+  return withDb(env, (db) => {
+    const id = runId ?? latestRunId(db);
+    if (!id) return undefined;
+    if (!db.query("SELECT 1 FROM runs WHERE run_id = ?").get(id)) return undefined;
+    const done = (
+      db.query("SELECT op, dst, undo FROM ops WHERE run_id = ? AND t = 'done' ORDER BY id").all(id) as {
+        op: string;
+        dst: string;
+        undo: string;
+      }[]
+    ).map((r) => ({ op: r.op, dst: r.dst, undo: JSON.parse(r.undo) as UndoToken }));
+    const sides = db
+      .query("SELECT op, label FROM sides WHERE run_id = ? ORDER BY id")
+      .all(id) as SideRecord[];
+    return { runId: id, done, sides };
+  });
 }
 
-// One-line summary of a recorded run, for `boom rollback --list`: how many reversible
-// ops it holds, how many non-reversible side effects, and whether it reached a clean
-// `committed` end (an uncommitted run was interrupted mid-sync).
+// One-line summary of a recorded run, for `boom rollback --list`: how many reversible ops
+// it holds, how many non-reversible side effects, and whether it reached a clean committed
+// state (an uncommitted run was interrupted mid-sync).
 export interface RunSummary {
   readonly runId: string;
   readonly ops: number;
@@ -165,33 +143,27 @@ export interface RunSummary {
   readonly committed: boolean;
 }
 
-// Enumerate the retained runs, newest first — the missing counterpart to `--run-id`,
-// which until now had no way to discover the ids it accepts.
+// Enumerate the retained runs, newest first (run ids sort chronologically).
 export async function listRuns(env: Env): Promise<RunSummary[]> {
-  const dir = journalDir(env);
-  let files: string[];
-  try {
-    files = (await readdir(dir)).filter((f) => f.endsWith(".ndjson")).sort();
-  } catch {
-    return [];
-  }
-  const out: RunSummary[] = [];
-  for (const f of files) {
-    let text: string;
-    try {
-      text = await readFile(join(dir, f), "utf8");
-    } catch {
-      continue;
-    }
-    let ops = 0;
-    let sides = 0;
-    let committed = false;
-    for (const rec of records(text)) {
-      if (rec.t === "done") ops++;
-      else if (rec.t === "side") sides++;
-      else if (rec.t === "committed") committed = true;
-    }
-    out.push({ runId: f.replace(/\.ndjson$/, ""), ops, sides, committed });
-  }
-  return out.reverse(); // newest first (filenames sort chronologically)
+  return withDb(env, (db) => {
+    const runs = db.query("SELECT run_id, committed FROM runs ORDER BY run_id DESC").all() as {
+      run_id: string;
+      committed: number;
+    }[];
+    const opsN = db.query("SELECT COUNT(*) AS n FROM ops WHERE run_id = ? AND t = 'done'");
+    const sidesN = db.query("SELECT COUNT(*) AS n FROM sides WHERE run_id = ?");
+    return runs.map((r) => ({
+      runId: r.run_id,
+      ops: (opsN.get(r.run_id) as { n: number }).n,
+      sides: (sidesN.get(r.run_id) as { n: number }).n,
+      committed: r.committed === 1,
+    }));
+  });
+}
+
+function latestRunId(db: Database): string | undefined {
+  const row = db.query("SELECT run_id FROM runs ORDER BY run_id DESC LIMIT 1").get() as
+    | { run_id: string }
+    | undefined;
+  return row?.run_id;
 }
