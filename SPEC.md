@@ -14,25 +14,26 @@ to TypeScript; this document is the design of record for that engine.
 
 A `boom` invocation does one of two things:
 
-1. **Reconcile verbs** over a config repo's `boomfile.toml`:
-   - `boom apply`  — reconcile the machine to the boomfile (`--upgrade` also upgrades outdated brewfile formulae)
+1. **Reconcile verbs** over a config repo's `boomfile.toml` — the `sync` verb is
+   triggered by the bare `boom source` command; the rest are their own top-level commands:
+   - `boom source`  — reconcile the machine to the boomfile, running the `sync` verb (`--upgrade` also upgrades outdated brewfile formulae)
    - `boom verify` — check drift, exit 0 ok / 2 warn / 1 fail (`--json` for a report)
-   - `boom repair` — repair drift (apply, overwriting conflicts)
+   - `boom repair` — repair drift (sync, overwriting conflicts)
    - `boom uninstall`
    These share **one verb-parameterized loop** (`src/engine/reconcile.ts`) over a
    resource-type registry — siblings, not separate scripts. `boom rollback` undoes
-   the most recent apply; `apply --resume` continues an interrupted one. A
+   the most recent sync; `source --resume` continues an interrupted one. A
    conflicting (non-boom-owned) file at a `link` destination is **overwritten by
-   default**; `apply --skip` opts out instead. There are no command aliases — one
+   default**; `source --skip` opts out instead. There are no command aliases — one
    canonical name per verb.
 
-   `apply`/`repair` (never `verify`/`uninstall`) also sync the config repo's own git
+   The `sync` verb / `repair` (never `verify`/`uninstall`) also sync the config repo's own git
    state against its remote first (`src/engine/sync.ts`): by default `pull --rebase
    --autostash`s, so any uncommitted local edits ride along and land back on top;
-   `apply --commit` commits local edits first instead of autostashing them, so
-   they replay as a real commit on the rebase. `boom source commit` commits local
-   config-repo changes standalone (`src/engine/commit.ts`), sharing its commit logic with
-   `apply --commit` so the default message/behavior can't drift between the two.
+   `source --commit` commits local edits first instead of autostashing them, so
+   they replay as a real commit on the rebase. `boom source push` commits local
+   config-repo changes and pushes them (`src/engine/commit.ts`), sharing its commit logic with
+   `source --commit` so the default message/behavior can't drift between the two.
 
 2. **Discovered subcommands** — built-ins are the `@stricli` route map (`source`,
    `code`, `mcp`, `where`, `rollback`, `upgrade`, `validate`, `doctor`, `completions`,
@@ -50,24 +51,24 @@ A `boom` invocation does one of two things:
 `boom source set` takes a remote reference — `owner/repo`, `github:owner/repo`,
 a full git URL, optionally `@ref` — never an arbitrary local path. Boom clones it into
 a managed cache dir (`configRepoCacheDir`, under the state dir) and records the
-breadcrumb (`{ path, remote: { url, ref? } }`), then applies immediately — the
+breadcrumb (`{ path, remote: { url, ref? } }`), then syncs immediately — the
 one-command fresh-machine bootstrap is `curl install.sh | sh && boom source set
-owner/repo`, no repo-relative bootstrap script needed. `--no-apply` records only (review
+owner/repo`, no repo-relative bootstrap script needed. `--no-sync` records only (review
 first, or re-point at a different repo without reconciling).
 
 Sync is a pre-reconcile step (`src/engine/sync.ts`), not a resource: `verify` fetches
 and reports drift without touching the working tree — "N commits behind origin",
 plus separate warnings for uncommitted local changes and committed-but-unpushed local
 commits, since a clean behind-count alone would otherwise read as "up to date" while
-either kind of local drift sits unreported; `apply`/`repair` pull first and report what
+either kind of local drift sits unreported; the `sync` verb / `repair` pull first and report what
 moved, then reconcile proceeds against whatever's on disk either way — a failed pull
 (including a `git rev-list` failure while checking drift) is reported as a failure but
 never blocks reconciling from the last-known-good local clone.
 
 The pull is `git pull --rebase --autostash` (git stashes any dirty tracked changes
 before rebasing and restores them after, including automatically on an aborted rebase);
-`apply --commit` commits local edits first instead of autostashing them
-(`src/engine/commit.ts`, shared with `boom source commit`).
+`source --commit` commits local edits first instead of autostashing them
+(`src/engine/commit.ts`, shared with `boom source push`).
 
 A rebase conflict aborts cleanly (`git rebase --abort`, which also restores the
 autostash) and is reported as a failure, but reconcile still proceeds from the local
@@ -77,8 +78,9 @@ A pinned `@ref` (tag/sha, detached HEAD) is reported as static rather than check
 drift. Auth is whatever git/SSH already works in the user's shell — no boom-side
 credential handling.
 
-The config-repo git verbs live under one namespace: `boom source push` pushes the
-managed clone's local commits upstream (no auto-commit); `boom source reset` is the
+The config-repo git verbs live under one namespace: `boom source push` commits any local
+config-repo changes and pushes the managed clone's commits upstream (`-m`/`--message`
+sets the commit message); `boom source reset` is the
 other direction — fetches, then hard-resets to the upstream tip (or the pinned `@ref`
 for a detached clone) and clears untracked files, discarding local changes back to what
 a fresh re-clone would leave. Like `linkRemoteConfigRepo`, `boom source reset` refuses
@@ -97,7 +99,7 @@ Resources:
 
 - `link` / `copy` `{ src, dst, mode? }`, `glob { pattern, into }`
 - `brewfile = "FILE"`, `mise = true`
-- `run = [{ on = "apply"|"verify", cmd }]` — the inline imperative escape
+- `run = [{ on = "sync"|"verify", cmd }]` — the inline imperative escape
 - `hook = [{ name, with? }]` — load `hooks/<name>.ts`, the TS resource-type extension
 
 A section may carry `when = { os, host, profile }` to gate by machine; overlay
@@ -107,7 +109,7 @@ files `boomfile.<os|host|profile>.toml` are merged onto the base. `--profile`
 
 ### Hooks = the resource-type extension contract
 
-`hooks/<name>.ts` default-exports (or names) `apply`/`verify`/`repair`/`uninstall`
+`hooks/<name>.ts` default-exports (or names) `sync`/`verify`/`repair`/`uninstall`
 functions receiving a `HookApi`: `{ with, verb, dryRun, env, ok, warn, fail, note }`.
 Loaded by runtime `import()` (works inside the compiled binary). This replaces the
 bash `_NAME_<verb>` hooks and is the public extension point.
@@ -119,7 +121,7 @@ Mutating runs open a journal under `${XDG_STATE_HOME:-~/.local/state}/boom/journ
 file under `…/backups/<run-id>/`. `boom rollback` replays the journal in reverse
 (remove created links, restore backups) — like a Mother Box, it remembers everything
 and can put it back. A `manifest` of owned destinations drives
-orphan reaping (verify warns; apply/fix reap). Breadcrumbs (`config`, `code`) record
+orphan reaping (verify warns; sync/repair reap). Breadcrumbs (`config`, `code`) record
 the dotfiles repo (path + remote) and code dir.
 
 ## Stack
@@ -139,8 +141,9 @@ the dotfiles repo (path + remote) and code dir.
 src/
   cli.ts · index.ts        @stricli app + entrypoint (one dispatch: route-map lookup →
                            discovered user cmd, else Stricli — no hardcoded cases)
-  commands/                apply/verify/repair/uninstall (reconcile.ts), source
-                           (set/diff/commit/push/reset route map — set is the bootstrap),
+  commands/                verify/repair/uninstall + source (reconcile.ts; source runs
+                           the sync verb and namespaces the set/diff/push/reset route
+                           map — set is the bootstrap),
                            where, rollback, upgrade, validate, doctor, code, mcp (add
                            route), completions, man, skill
                            catalog.ts (names+briefs derived from the route map for
@@ -148,7 +151,7 @@ src/
   engine/
     reconcile.ts           the one verb loop
     sync.ts                pre-reconcile config-repo fetch/pull(--rebase --autostash)-and-report
-    commit.ts              commit local config-repo changes (shared by `boom source commit` + apply --commit)
+    commit.ts              commit local config-repo changes (shared by `boom source push` + source --commit)
     diff.ts                boom source diff (read-only: working-tree diff vs HEAD + untracked)
     push.ts reset.ts       boom source push / boom source reset
     registry.ts            per-section phase dispatch

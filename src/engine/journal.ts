@@ -1,4 +1,4 @@
-// The apply transaction journal: an append-only NDJSON log per run. Each mutation
+// The sync transaction journal: an append-only NDJSON log per run. Each mutation
 // writes an `intent` then a `done` (with an undo token); a clean run ends `committed`.
 // rollback replays `done` records in reverse; --resume skips destinations already done.
 import { appendFile, mkdir, readdir, readFile, rm } from "node:fs/promises";

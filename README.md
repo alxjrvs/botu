@@ -3,7 +3,7 @@
 **BoomTube** is a **workspace manager** — it provisions your machine and your
 code workspaces fast, then gets out of your way so you can work. Its executable,
 **`boom`**, reconciles your machine from a declarative `boomfile.toml` —
-`apply` / `verify` / `repair` — rolls back any change, and opens portals to your
+`sync` / `verify` / `repair` — rolls back any change, and opens portals to your
 code workspaces. One self-contained binary, compiled from **TypeScript on
 [Bun](https://bun.com)**, with zero runtime dependencies on your machine.
 
@@ -34,36 +34,36 @@ Bun runtime, so nothing else is required. Override the install prefix with
 ## Bootstrap a machine
 
 ```sh
-boom source set alxjrvs/dotfiles   # clone your remote dotfiles repo and apply it — one-shot bootstrap
-boom apply                         # thereafter: reconcile from the recorded config repo
+boom source set alxjrvs/dotfiles   # clone your remote dotfiles repo and sync it — one-shot bootstrap
+boom source                        # thereafter: reconcile from the recorded config repo
 ```
 
 `boom source set` takes a **remote reference** — `owner/repo`, `github:owner/repo`, a
 git URL, optionally `@ref` — never an arbitrary local path. boom clones it into a
-managed cache dir, records a breadcrumb, and applies it. Pass `--no-apply` to clone and
+managed cache dir, records a breadcrumb, and syncs it. Pass `--no-sync` to clone and
 record only — to review before reconciling, or to re-point at a different repo. The
 fresh-machine one-liner is `curl install.sh | sh && boom source set owner/repo`.
 
 ## The reconcile loop
 
-`apply` / `verify` / `repair` / `uninstall` are **one verb-parameterized loop** over
+`sync` / `verify` / `repair` / `uninstall` are **one verb-parameterized loop** over
 a resource registry — siblings, not separate scripts.
 
 ```sh
-boom apply              # make it so: symlink / copy / install / run from boomfile.toml
-boom apply --dry-run    # preview every change; touch nothing
-boom apply --skip       # skip conflicting targets instead of overwriting them
-boom apply --upgrade    # also upgrade outdated brewfile formulae, not just declared state
-boom apply --commit     # commit local config-repo edits before pulling
-boom apply --resume     # continue an interrupted apply (skips completed steps)
+boom source             # make it so: symlink / copy / install / run from boomfile.toml
+boom source --dry-run   # preview every change; touch nothing
+boom source --skip      # skip conflicting targets instead of overwriting them
+boom source --upgrade   # also upgrade outdated brewfile formulae, not just declared state
+boom source --commit    # commit local config-repo edits before pulling
+boom source --resume    # continue an interrupted sync (skips completed steps)
 
 boom verify             # check for drift — exit 0 ok / 2 warn / 1 fail
 boom verify --json      # …as a structured drift report
-boom repair             # repair drift (apply, overwriting conflicts)
-boom rollback           # undo the most recent apply (restores backed-up files)
+boom repair             # repair drift (sync, overwriting conflicts)
+boom rollback           # undo the most recent sync (restores backed-up files)
 ```
 
-`apply`/`repair` sync the config repo against its remote first (`pull --rebase
+`sync`/`repair` sync the config repo against its remote first (`pull --rebase
 --autostash`, so local edits ride along and land back on top). `verify` reports
 "N commits behind" as drift — plus separate warnings for uncommitted or unpushed
 local changes — without touching the working tree. A failed pull is *reported* but
@@ -78,8 +78,7 @@ reconciled from) without cd-ing into the cache dir it lives in:
 
 ```sh
 boom source diff          # show uncommitted local changes in the config repo
-boom source commit        # commit local changes in the config repo
-boom source push          # push the config repo's local commits upstream
+boom source push          # commit local changes and push them upstream
 boom source reset         # discard local changes, reset to origin
 boom source reset --force # …including commits no remote has (refused otherwise)
 ```
@@ -121,7 +120,7 @@ mise = true
 [[section]]
 name = "macOS only"
 when = { os = "darwin" }          # gate by os / host / profile
-run  = [{ on = "apply", cmd = "defaults write com.apple.dock autohide -bool true" }]
+run  = [{ on = "sync", cmd = "defaults write com.apple.dock autohide -bool true" }]
 
 [[section]]
 name = "Secrets"
@@ -129,7 +128,7 @@ hook = [{ name = "op-agent", with = { vault = "claude-agent" } }]   # → hooks/
 ```
 
 Imperative escapes are `run` steps (a shell command) or a **hook** — a
-`hooks/<name>.ts` module exporting `apply`/`verify`/`repair` that receives a typed
+`hooks/<name>.ts` module exporting `sync`/`verify`/`repair` that receives a typed
 `HookApi`. That's the extension point for anything the declarative resources can't
 express. Multi-machine setups gate sections with `when`, or layer overlay files
 (`boomfile.<os|host|profile>.toml`).

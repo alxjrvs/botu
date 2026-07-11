@@ -38,36 +38,37 @@ packages, runs steps and hooks, and can undo any change.
 ## Mental model
 
 - **One config source.** \`boom source set <owner/repo>\` clones the repo into a managed
-  cache dir, records it, and applies it. That is also the fresh-machine bootstrap.
-- **The reconcile loop is one verb over one registry.** \`apply\`, \`verify\`, \`repair\`,
-  and \`uninstall\` walk the same resources; only the verb changes.
+  cache dir, records it, and syncs it. That is also the fresh-machine bootstrap.
+- **The reconcile loop is one verb over one registry.** \`source\` (the sync verb),
+  \`verify\`, \`repair\`, and \`uninstall\` walk the same resources; only the verb changes.
 - **One canonical name per command — there are no aliases.**
 
 ## Commands
 
 ${commands}
 
-\`source\` and \`code\` are namespaces: \`boom source <set|diff|commit|push|reset>\`,
-\`boom code <init|claude|cmux>\`. Run \`boom <command> --help\` for flags.
+\`boom source\` reconciles your machine; its subcommands \`set|diff|push|reset\` operate the
+config repo. \`code\` is a namespace: \`boom code <init|claude|cmux>\`. Run
+\`boom <command> --help\` for flags.
 
 ## Driving it safely
 
 - **Check before changing.** \`boom verify\` exits **0** ok / **2** warnings / **1**
-  failures — gate on it. \`boom apply --dry-run\` previews every change and touches nothing.
-- **Machine-readable output.** \`--json\` on \`apply\`/\`verify\`/\`repair\` emits a structured
+  failures — gate on it. \`boom source --dry-run\` previews every change and touches nothing.
+- **Machine-readable output.** \`--json\` on \`source\`/\`verify\`/\`repair\` emits a structured
   report (with a \`schemaVersion\`); parse that instead of scraping stdout.
 - **Scope a run** with \`--only <section>\` (repeatable) and \`--profile <name>\`.
 - **Destructive commands to use with care:** \`boom source reset --force\` discards local
   commits no remote has; \`boom uninstall\` removes everything boom installed. Both are
-  reversible only via \`boom rollback\` (which replays the last apply's journal).
-- **Conflicts** at a link destination are overwritten by default; \`apply --skip\` opts out.
+  reversible only via \`boom rollback\` (which replays the last sync's journal).
+- **Conflicts** at a link destination are overwritten by default; \`boom source --skip\` opts out.
 
 ## Bootstrapping a fresh machine
 
 \`\`\`sh
 curl -fsSL https://raw.githubusercontent.com/alxjrvs/boom/main/install.sh | sh
-boom source set owner/repo          # clone + record + apply
-boom source set owner/repo --no-apply   # …or clone + record only
+boom source set owner/repo          # clone + record + sync
+boom source set owner/repo --no-sync    # …or clone + record only
 \`\`\`
 `;
 }

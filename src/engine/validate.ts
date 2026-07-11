@@ -1,5 +1,5 @@
 // `boom validate` — parse + schema-check the boomfile (and every overlay) without
-// touching the machine. Lets a dotfiles repo CI-check its config the way `boom apply`
+// touching the machine. Lets a dotfiles repo CI-check its config the way `boom source`
 // would load it, but read-only. Exit 0 if every file is valid, 1 otherwise.
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";

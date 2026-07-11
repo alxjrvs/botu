@@ -228,7 +228,7 @@ test("a failed re-link leaves the existing clone and breadcrumb untouched", asyn
   const dest = await linkRemoteConfigRepo(env, good);
   const other = await gitFixture();
   // Clone of `other` succeeds but the bogus pin fails its checkout: the last-known-good
-  // clone must survive (offline apply depends on it), and the breadcrumb must still
+  // clone must survive (offline sync depends on it), and the breadcrumb must still
   // name `good` — not dangle over a half-linked dir holding `other`'s content.
   expect(await linkRemoteConfigRepo(env, `${other}@nosuchref`).catch((e) => e)).toBeInstanceOf(
     BoomConfigError,

@@ -25,16 +25,16 @@ repo crawl and dispatches per repo; `where config|code|engine` is the single res
 `watchtower` was dropped (the op-based audit never materialized); `doctor` now covers
 the precondition-check role it gestured at.
 
-### 2. Apply transaction / journal → **M3**
+### 2. Sync transaction / journal → **M3**
 Mutating runs journal to `…/boom/journal/<run-id>.ndjson` (intent/done + undo
 token, committed marker) and back up displaced files instead of destroying them.
-`boom rollback` replays the journal in reverse; `apply --resume` skips done steps;
+`boom rollback` replays the journal in reverse; `boom source --resume` skips done steps;
 `verify --json` emits a structured drift report; orphan reaping is rebuilt on the
 manifest. (`src/engine/journal.ts`, `state.ts`, `rollback.ts`.)
 
 ### 3. Hook contract → the resource-type API → **M2**
 The hook is the public extension point: `hooks/<name>.ts` modules exporting
-`apply`/`verify`/`repair` that receive a typed `HookApi`. Built-in resources
+`sync`/`verify`/`repair` that receive a typed `HookApi`. Built-in resources
 (link/copy/glob/run/packages) implement the same verb contract in a registry
 (`src/engine/registry.ts`, `resources/`). No JSON-config manifest — the *config*
 is TOML data, but the *extension* contract is typed TypeScript.
@@ -46,7 +46,7 @@ activates named profiles, os/host auto-match. (`src/config/profile.ts`.)
 
 ## What stayed true
 
-"One model, two surfaces" survived the rewrite intact: `apply`/`verify`/`repair`/
+"One model, two surfaces" survived the rewrite intact: `sync`/`verify`/`repair`/
 `uninstall` are still one verb-parameterized loop (`src/engine/reconcile.ts`),
 and subcommands are still discovered, never a hardcoded dispatch table — just in
 TypeScript now.

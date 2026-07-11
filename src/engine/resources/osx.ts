@@ -1,5 +1,5 @@
 // The osx_default resource: `defaults write/read` a macOS default. OS-gated to
-// darwin (a no-op elsewhere), like the bash engine. Marks ctx.osx.changed so apply
+// darwin (a no-op elsewhere), like the bash engine. Marks ctx.osx.changed so sync
 // can restart the owning UI processes at the end of the run.
 import { detectOs } from "../../config/profile.ts";
 import type { OsxDefault } from "../../config/schema.ts";
@@ -54,7 +54,7 @@ export function reconcileOsxDefault(entry: OsxDefault, ctx: ReconcileCtx): void 
   };
 
   switch (ctx.verb) {
-    case "apply":
+    case "sync":
     case "repair": {
       if (ctx.dryRun) {
         report.plan(`would set ${disp} -${type} ${want}`);
@@ -62,7 +62,7 @@ export function reconcileOsxDefault(entry: OsxDefault, ctx: ReconcileCtx): void 
       }
       // Idempotent: skip the write when the stored value already matches. This is
       // what gates the UI restart — `defaults write` always exits 0, so writing
-      // unconditionally would flag every apply as "changed" and needlessly restart
+      // unconditionally would flag every sync as "changed" and needlessly restart
       // Dock/Finder/SystemUIServer even when nothing changed.
       const { ok, cur } = readCurrent();
       if (ok && osxMatches(type, cur, value)) {

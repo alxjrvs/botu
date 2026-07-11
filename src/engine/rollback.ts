@@ -1,4 +1,4 @@
-// Roll back a previous apply by replaying its journal's `done` records in reverse:
+// Roll back a previous sync by replaying its journal's `done` records in reverse:
 // remove what boom created, restore what an overwrite displaced.
 import { rm } from "node:fs/promises";
 import type { BoomContext } from "../context.ts";
@@ -34,7 +34,7 @@ export async function rollback(ctx: BoomContext, runId?: string): Promise<number
   // Links/copies are reversed above; `run`/`hook` side effects can't be, so surface
   // them so the operator knows what state rollback did NOT restore.
   if (run.sides.length > 0) {
-    report.header("Not reversible (ran during apply)");
+    report.header("Not reversible (ran during sync)");
     for (const s of run.sides) report.warn(`${s.op}: ${s.label}`);
   }
 

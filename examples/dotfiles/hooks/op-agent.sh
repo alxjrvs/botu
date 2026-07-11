@@ -10,7 +10,7 @@
 #   op-agent status              report keychain token presence (exit 0/1)
 #
 # This stays a standalone script ONLY because Claude Code's headersHelper execs
-# it by path; the boomfile drives provision/status via `on apply|verify op-agent …`.
+# it by path; the boomfile drives provision/status via `on sync|verify op-agent …`.
 set -euo pipefail
 
 KEYCHAIN="op-claude-agent"

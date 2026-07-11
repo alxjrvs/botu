@@ -1,30 +1,32 @@
-// `boom source <set|diff|commit|push|reset>` — everything about the config source: the
-// git remote your machine is reconciled from, and the managed clone of it. `set` points
-// boom at a repo (clone + record, then apply); the rest operate the clone in place without
-// cd-ing into the cache dir it lives in. A nested route map so the whole config-source
-// story is one namespace; each verb is a thin wrapper over its engine module, and the
-// clone-operating ones share the single `requireConfigBreadcrumb` guard.
+// `boom source` — reconcile your machine from its config source. Bare `boom source` runs
+// the sync verb (the route map's `defaultCommand`), the "make it so" reconcile. The
+// subcommands operate the source itself — the git remote your machine is reconciled from,
+// and its managed clone: `set` points boom at a repo (clone + record, then sync); the rest
+// (`diff|push|reset`) operate the clone in place without cd-ing into the cache dir it lives
+// in — `push` commits and pushes local edits in one step. A nested route map so the whole
+// config-source story is one namespace; each verb is a thin wrapper over its engine module,
+// and the clone-operating ones share the single `requireConfigBreadcrumb` guard.
 import { buildCommand, buildRouteMap } from "@stricli/core";
 import { linkRemoteConfigRepo } from "../config/remote.ts";
 import type { BoomContext } from "../context.ts";
-import { commitConfigRepo } from "../engine/commit.ts";
 import { diffConfigRepo } from "../engine/diff.ts";
 import { pushConfigRepo } from "../engine/push.ts";
 import { reconcile } from "../engine/reconcile.ts";
 import { resetConfigRepo } from "../engine/reset.ts";
+import { syncCommand } from "./reconcile.ts";
 
 // `boom source set <owner/repo>` — the fresh-machine bootstrap
 // (`curl install.sh | sh && boom source set owner/repo`) and the way to re-point at a
-// different repo later. Clones + records the remote, then applies it. `--no-apply` records
+// different repo later. Clones + records the remote, then syncs it. `--no-sync` records
 // only. There is no local-path variant — config is always a git remote (repo-only).
-const setCommand = buildCommand<{ apply?: boolean }, [string], BoomContext>({
-  docs: { brief: "Point boom at a config repo: clone, record, and apply it" },
+const setCommand = buildCommand<{ sync?: boolean }, [string], BoomContext>({
+  docs: { brief: "Point boom at a config repo: clone, record, and sync it" },
   parameters: {
     flags: {
-      apply: {
+      sync: {
         kind: "boolean",
         optional: true,
-        brief: "Reconcile immediately after cloning (default; --no-apply records only)",
+        brief: "Reconcile immediately after cloning (default; --no-sync records only)",
       },
     },
     positional: {
@@ -46,8 +48,8 @@ const setCommand = buildCommand<{ apply?: boolean }, [string], BoomContext>({
       return e as Error;
     }
     this.process.stdout.write(`boom: dotfiles repo cloned → ${target}\n`);
-    // Apply by default; --no-apply is the record-only path (clone + record, don't reconcile).
-    if (flags.apply !== false) this.process.exitCode = await reconcile("apply", this, {});
+    // Sync by default; --no-sync is the record-only path (clone + record, don't reconcile).
+    if (flags.sync !== false) this.process.exitCode = await reconcile("sync", this, {});
   },
 });
 
@@ -59,29 +61,23 @@ const diffCommand = buildCommand<Record<never, never>, [], BoomContext>({
   },
 });
 
-const commitCommand = buildCommand<{ message?: string }, [], BoomContext>({
-  docs: { brief: "Commit local changes in the config repo" },
+// `boom source push` — the one "save my edits remotely" command: commit any local changes,
+// then push. No separate commit verb; `-m` names the commit message.
+const pushCommand = buildCommand<{ message?: string }, [], BoomContext>({
+  docs: { brief: "Commit local config-repo changes and push them upstream" },
   parameters: {
     flags: {
       message: {
         kind: "parsed",
         parse: (s: string) => s,
         optional: true,
-        brief: 'Commit message (default: "boom: local changes")',
+        brief: 'Commit message for local changes (default: "boom: local changes")',
       },
     },
     aliases: { m: "message" },
   },
   async func(flags) {
-    this.process.exitCode = await commitConfigRepo(this, flags.message);
-  },
-});
-
-const pushCommand = buildCommand<Record<never, never>, [], BoomContext>({
-  docs: { brief: "Push the config repo's local commits upstream" },
-  parameters: {},
-  async func() {
-    this.process.exitCode = await pushConfigRepo(this);
+    this.process.exitCode = await pushConfigRepo(this, flags.message);
   },
 });
 
@@ -104,11 +100,18 @@ const resetCommand = buildCommand<{ force?: boolean }, [], BoomContext>({
 
 export const sourceRouteMap = buildRouteMap({
   routes: {
+    // `sync` is the reconcile verb, wired as the route map's `defaultCommand` so it runs on
+    // a bare `boom source` — and `hideRoute`-d so it is never an exposed second spelling.
+    // `boom source` is the one documented way to reconcile; the rest operate the config repo.
+    sync: syncCommand,
     set: setCommand,
     diff: diffCommand,
-    commit: commitCommand,
     push: pushCommand,
     reset: resetCommand,
   },
-  docs: { brief: "Set or operate the config repo (set | diff | commit | push | reset)" },
+  defaultCommand: "sync",
+  docs: {
+    brief: "Reconcile your machine (bare); or operate the config repo (set | diff | push | reset)",
+    hideRoute: { sync: true },
+  },
 });

@@ -119,7 +119,7 @@ export function diffHead(dir: string, env: Env): ShellResult {
   return runArgv(["git", "diff", "HEAD"], env, { cwd: dir });
 }
 
-// Paths git isn't tracking yet — the new files `git diff` omits but `boom source commit`
+// Paths git isn't tracking yet — the new files `git diff` omits but `boom source push`
 // (git add -A) would capture. Mirrors the `--others` half of the porcelain status so a
 // `boom source diff` doesn't silently hide a freshly added base file.
 export function untrackedFiles(dir: string, env: Env): string[] {
