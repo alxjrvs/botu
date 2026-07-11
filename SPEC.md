@@ -14,9 +14,10 @@ to TypeScript; this document is the design of record for that engine.
 
 A `boom` invocation does one of two things:
 
-1. **Reconcile verbs** over a config repo's `boomfile.toml` — the `sync` verb is
-   triggered by the bare `boom source` command; the rest are their own top-level commands:
-   - `boom source`  — reconcile the machine to the boomfile, running the `sync` verb (`--upgrade` also upgrades outdated brewfile formulae)
+1. **Reconcile verbs** over a config repo's `boomfile.toml` — the `sync` verb runs on
+   the bare `boom source` command (and its explicit `boom source sync` spelling); the
+   rest are their own top-level commands:
+   - `boom source` / `boom source sync` — reconcile the machine to the boomfile, running the `sync` verb (`--upgrade` also upgrades outdated brewfile formulae)
    - `boom verify` — check drift, exit 0 ok / 2 warn / 1 fail (`--json` for a report)
    - `boom repair` — repair drift (sync, overwriting conflicts)
    - `boom uninstall`
@@ -25,8 +26,9 @@ A `boom` invocation does one of two things:
    the most recent sync (`--run-id` targets an older one, `--list` enumerates them);
    `source --resume` continues an interrupted one. A
    conflicting (non-boom-owned) file at a `link` destination is **overwritten by
-   default**; `source --skip` opts out instead. There are no command aliases — one
-   canonical name per verb.
+   default**; `source --skip` opts out instead. `sync` is the one canonical reconcile
+   name; bare `boom source` is its shorthand (the namespace's default command), not a
+   separate alias.
 
    The `sync` verb / `repair` (never `verify`/`uninstall`) also sync the config repo's own git
    state against its remote first (`src/engine/sync.ts`): by default `pull --rebase
@@ -103,7 +105,7 @@ Resources:
 
 - `link` / `copy` `{ src, dst, mode? }`, `glob { pattern, into }`
 - `brewfile = "FILE"`, `mise = true`
-- `run = [{ on = "sync"|"verify", cmd }]` — the inline imperative escape
+- `run = [{ on = "sync"|"verify"|"uninstall", cmd }]` — the inline imperative escape
 - `hook = [{ name, with? }]` — load `hooks/<name>.ts`, the TS resource-type extension
 
 A section may carry `when = { os, host, profile }` to gate by machine; overlay
@@ -120,13 +122,17 @@ bash `_NAME_<verb>` hooks and is the public extension point.
 
 ### Transaction + state
 
-Mutating runs open a journal under `${XDG_STATE_HOME:-~/.local/state}/boom/journal/`
-(NDJSON, intent/done + undo token, committed marker) and **back up** any displaced
-file under `…/backups/<run-id>/`. `boom rollback` replays the journal in reverse
-(remove created links, restore backups) — like a Mother Box, it remembers everything
-and can put it back. A `manifest` of owned destinations drives
-orphan reaping (verify warns; sync/repair reap). Breadcrumbs (`config`, `code`) record
-the dotfiles repo (path + remote) and code dir.
+On-disk state lives in a single **bun:sqlite** database at
+`${XDG_STATE_HOME:-~/.local/state}/boom/state.db` (`src/engine/db.ts`): the per-run
+transaction journal (intent/done rows + undo token, a `committed` flag) and the `manifest`
+of owned destinations. Each journal row commits atomically (WAL), so an interrupted run
+leaves whole rows — there's no torn-record to guard against on read. Mutating runs also
+**back up** any displaced file under `…/backups/<run-id>/`. `boom rollback` replays a run's
+`done` rows in reverse (remove created links, restore backups) — like a Mother Box, it
+remembers everything and can put it back; `--dry-run` previews the replay. The manifest
+drives orphan reaping (verify warns; sync/repair reap), and a legacy TSV manifest is
+imported once on upgrade. Breadcrumbs (`config`, `code`) record the config repo (path +
+remote) and code dir.
 
 ## Stack
 
@@ -134,6 +140,7 @@ the dotfiles repo (path + remote) and code dir.
 |---------|--------|
 | CLI | `@stricli/core` — the only framework that compiles cleanly under `bun build --compile` |
 | Config | TOML via `smol-toml`, validated by `valibot` |
+| State | `bun:sqlite` (`state.db`: owned-destinations manifest + transaction journal) |
 | Shell / process | `Bun.$` / `Bun.spawnSync`; `node:fs/promises` for symlink/copy/mode |
 | Output | `Bun.color` palette + a tally Reporter (drives exit codes) |
 | Quality gates | Biome (lint + format), `tsc --noEmit`, `bun test` |
@@ -159,9 +166,9 @@ src/
     diff.ts                boom source diff (read-only: working-tree diff vs HEAD + untracked)
     status.ts              boom source status (read-only drift vs origin, shared repoDrift helper)
     push.ts reset.ts       boom source push / boom source reset
-    registry.ts            per-section phase dispatch
-    resources/             link · copy · glob · packages · run · hook
-    journal.ts state.ts    transaction + on-disk state
+    registry.ts            data-driven resource table (phase order) + finalize hooks
+    resources/             link · copy · glob · packages · osx · run · hook
+    db.ts journal.ts state.ts   bun:sqlite store: transaction journal + manifest
     rollback.ts code.ts discovery.ts
   config/  schema.ts load.ts remote.ts profile.ts
   lib/     reporter.ts color.ts fs.ts proc.ts git.ts version.ts

@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BoomContext } from "../src/context.ts";
-import { listRuns, newRunId } from "../src/engine/journal.ts";
+import { Journal, listRuns, newRunId } from "../src/engine/journal.ts";
 import { reconcile } from "../src/engine/reconcile.ts";
 import { listRollbacks, rollback } from "../src/engine/rollback.ts";
 import { linkTarget, pathExists, stat } from "../src/lib/fs.ts";
@@ -66,6 +66,37 @@ test("rollback removes a freshly applied link", async () => {
   expect(await pathExists(join(sb.home, ".z"))).toBe(true);
   expect(await rollback(sb.ctx)).toBe(0);
   expect(await pathExists(join(sb.home, ".z"))).toBe(false);
+});
+
+test("--resume skips destinations a prior interrupted run already recorded", async () => {
+  const sb = await sandbox(
+    `[[section]]\nname = "S"\nlink = [{ src = ".a", dst = "~/.a" }, { src = ".b", dst = "~/.b" }]\n`,
+  );
+  await sb.write(".a", "a");
+  await sb.write(".b", "b");
+  // A prior run that recorded ~/.a as done, then was interrupted (never committed). This is
+  // the case the eager sqlite run-row insert broke: the new run must NOT shadow this one.
+  const prior = new Journal(sb.ctx.env, newRunId());
+  await prior.done("link", join(sb.home, ".a"), { kind: "remove" });
+
+  sb.clear();
+  expect(await reconcile("sync", sb.ctx, { resume: true })).toBe(0);
+  const out = sb.out();
+  expect(out).toContain("resumed — already applied"); // ~/.a skipped from the prior done-set
+  expect(await pathExists(join(sb.home, ".a"))).toBe(false); // trusted as already done, not re-linked
+  expect(await linkTarget(join(sb.home, ".b"))).toBe(join(sb.repo, ".b")); // ~/.b was new → applied
+});
+
+test("rollback --dry-run previews the undo without touching anything", async () => {
+  const sb = await sandbox(`[[section]]\nname = "S"\nlink = [{ src = ".z", dst = "~/.z" }]\n`);
+  await sb.write(".z", "z");
+  expect(await reconcile("sync", sb.ctx, {})).toBe(0);
+  const link = join(sb.home, ".z");
+  expect(await pathExists(link)).toBe(true);
+  sb.clear();
+  expect(await rollback(sb.ctx, undefined, true)).toBe(0); // dry run
+  expect(sb.out()).toContain("would remove");
+  expect(await pathExists(link)).toBe(true); // still linked — nothing was undone
 });
 
 test("newRunId is unique across same-millisecond calls (no journal collision)", () => {

@@ -8,17 +8,17 @@ import { overlayFiles, profileContext, sectionApplies } from "../config/profile.
 import type { Boomfile, Section } from "../config/schema.ts";
 import type { BoomContext } from "../context.ts";
 import { colorEnabled } from "../lib/color.ts";
-import { backupTo, displayPath, filesEqual, linkTarget, pathExists, rm } from "../lib/fs.ts";
-import { Reporter } from "../lib/reporter.ts";
-import { Journal, newRunId, pruneRuns, readRun, type UndoToken } from "./journal.ts";
-import { reconcileSection } from "./registry.ts";
+import { displayPath, filesEqual, linkTarget, pathExists } from "../lib/fs.ts";
+import { REPORT_SCHEMA_VERSION, Reporter } from "../lib/reporter.ts";
+import { displace, Journal, newRunId, pruneRuns, readRun } from "./journal.ts";
+import { finalizeResources, reconcileSection } from "./registry.ts";
 import { backupsDir, type ManifestEntry, readManifest, writeManifest } from "./state.ts";
 import { syncConfigRepo } from "./sync.ts";
 import type { LinkMode, ReconcileCtx, Verb } from "./types.ts";
 
-// Version of the `--json` report envelope. Bump when its shape changes so a script
-// consuming `verify --json` / `sync --json` can detect (and refuse) an unknown shape.
-export const REPORT_SCHEMA_VERSION = 1;
+// Re-exported (the envelope shape lives in reporter.ts now) so existing importers of the
+// reconcile module's constant keep working.
+export { REPORT_SCHEMA_VERSION };
 
 export interface ReconcileOptions {
   readonly only?: string[];
@@ -65,10 +65,7 @@ async function reapOrphans(ctx: ReconcileCtx, prior: readonly ManifestEntry[]): 
       // `boom rollback` can restore a reaped file instead of the deletion being a
       // silent, un-undoable side effect outside the run's safety net.
       await ctx.journal?.intent("reap", dst);
-      const undo: UndoToken = ctx.backupRoot
-        ? { kind: "restore", from: await backupTo(dst, ctx.backupRoot) }
-        : { kind: "remove" };
-      if (!ctx.backupRoot) await rm(dst, { force: true });
+      const undo = await displace(dst, ctx.backupRoot);
       await ctx.journal?.done("reap", dst, undo);
       ctx.report.ok(`reaped orphan ${disp}`);
     }
@@ -100,26 +97,10 @@ export async function reconcile(verb: Verb, ctx: BoomContext, opts: ReconcileOpt
   const json = opts.json ?? false;
   const report = new Reporter(ctx.process.stdout, ctx.process.stderr, colorEnabled(ctx.env), json);
 
-  // The same structured envelope for every verb, so each reconcile verb is scriptable,
-  // not just the read-only one. One writer — no per-branch copy of the object literal.
-  const writeEnvelope = (): void => {
-    ctx.process.stdout.write(
-      `${JSON.stringify({
-        schemaVersion: REPORT_SCHEMA_VERSION,
-        ok: report.failures === 0,
-        warnings: report.warnings,
-        failures: report.failures,
-        records: report.records,
-      })}\n`,
-    );
-  };
-
   const finish = (): number => {
-    if (json) {
-      writeEnvelope();
-      // verify's exit code carries a warning tier (0/2/1); mutating verbs are 0/1.
-      return report.failures > 0 ? 1 : verb === "verify" && report.warnings > 0 ? 2 : 0;
-    }
+    // The same structured envelope for every verb (verify carries a warning tier, mutating
+    // verbs are 0/1), shared with doctor/validate via Reporter.finishJson.
+    if (json) return report.finishJson(ctx.process.stdout, verb === "verify");
     // Human output: the shared Reporter epilogue owns the blank line + 0/2/1 mapping.
     // verify has a warning tier; the mutating verbs (sync/repair/uninstall) do not.
     return verb === "verify"
@@ -155,12 +136,17 @@ export async function reconcile(verb: Verb, ctx: BoomContext, opts: ReconcileOpt
   let resumeDone: ReadonlySet<string> | undefined;
   if (mutating) {
     const runId = newRunId();
-    journal = new Journal(ctx.env, runId);
-    backupRoot = join(backupsDir(ctx.env), runId);
+    // Read the prior interrupted run's done-set BEFORE opening this run's journal. The
+    // sqlite Journal inserts its run row eagerly, so once it exists it is the newest run —
+    // an untargeted readRun() would then resolve to *this* empty run and resume nothing.
+    // (The old NDJSON journal got away with the reverse order only because its constructor
+    // was lazy and wrote no file until the first op.)
     if (opts.resume) {
       const prior = await readRun(ctx.env);
       if (prior) resumeDone = new Set(prior.done.map((d) => d.dst));
     }
+    journal = new Journal(ctx.env, runId);
+    backupRoot = join(backupsDir(ctx.env), runId);
   }
   const priorManifest = await readManifest(ctx.env);
 
@@ -177,7 +163,7 @@ export async function reconcile(verb: Verb, ctx: BoomContext, opts: ReconcileOpt
     journal,
     backupRoot,
     resumeDone,
-    osx: { changed: false },
+    dirty: new Set<string>(),
   };
 
   // Merge overlay files (boomfile.<os|host|profile>.toml) onto the base, then gate
@@ -218,13 +204,10 @@ export async function reconcile(verb: Verb, ctx: BoomContext, opts: ReconcileOpt
     await writeManifest(ctx.env, []); // uninstall clears the manifest
   }
 
-  // Applied macOS defaults don't take effect until the owning apps restart — a
-  // universal consequence of osx_default, so the engine does it (not the config).
-  if (mutating && rctx.osx.changed && pc.os === "darwin") {
-    report.header("macOS finalize");
-    Bun.spawnSync(["killall", "Dock", "Finder", "SystemUIServer"], { stdout: "ignore", stderr: "ignore" });
-    report.ok("restarted Dock/Finder/SystemUIServer (defaults changed)");
-  }
+  // End-of-run finalize hooks (each self-gates): the seam where a resource acts on its own
+  // accumulated state — e.g. osx restarts Dock/Finder/SystemUIServer once, iff a default
+  // actually changed — instead of the core loop reaching into a resource-specific flag.
+  await finalizeResources(rctx);
 
   return finish();
 }

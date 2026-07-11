@@ -4,6 +4,7 @@ import { buildCommand } from "@stricli/core";
 import type { BoomContext } from "../context.ts";
 import { reconcile } from "../engine/reconcile.ts";
 import type { LinkMode } from "../engine/types.ts";
+import { confirm } from "../lib/confirm.ts";
 import { str } from "./flags.ts";
 
 const onlyFlag = {
@@ -104,27 +105,53 @@ export const verifyCommand = buildCommand<VerifyFlags, [], BoomContext>({
   },
 });
 
-export const repairCommand = buildCommand<OnlyFlags, [], BoomContext>({
+export const repairCommand = buildCommand<OnlyFlags & { dryRun?: boolean }, [], BoomContext>({
   docs: { brief: "Repair drift (sync, overwriting conflicts)" },
-  parameters: { flags: { only: onlyFlag, profile: profileFlag, json: jsonFlag } },
+  parameters: {
+    flags: {
+      dryRun: { kind: "boolean", optional: true, brief: "Show what would be repaired; change nothing" },
+      only: onlyFlag,
+      profile: profileFlag,
+      json: jsonFlag,
+    },
+  },
   async func(flags) {
     this.process.exitCode = await reconcile("repair", this, {
       only: flags.only,
+      dryRun: flags.dryRun,
       json: flags.json,
       profiles: flags.profile,
     });
   },
 });
 
-export const uninstallCommand = buildCommand<{ dryRun?: boolean; json?: boolean }, [], BoomContext>({
+export const uninstallCommand = buildCommand<
+  { dryRun?: boolean; json?: boolean; yes?: boolean },
+  [],
+  BoomContext
+>({
   docs: { brief: "Remove everything boom installed" },
   parameters: {
     flags: {
       dryRun: { kind: "boolean", optional: true, brief: "Show what would be removed; remove nothing" },
+      yes: { kind: "boolean", optional: true, brief: "Skip the confirmation prompt (for scripts/CI)" },
       json: jsonFlag,
     },
+    aliases: { y: "yes" },
   },
   async func(flags) {
+    // Confirm before the real teardown (never for a dry run — it changes nothing). Only an
+    // interactive terminal without --yes is prompted; a pipe/CI proceeds, so scripts are
+    // unaffected. A json run is machine-driven, so treat it as already-consented.
+    if (
+      !flags.dryRun &&
+      !flags.json &&
+      !confirm("boom uninstall removes everything boom installed.", { yes: flags.yes })
+    ) {
+      this.process.stderr.write("boom: uninstall aborted\n");
+      this.process.exitCode = 1;
+      return;
+    }
     this.process.exitCode = await reconcile("uninstall", this, { dryRun: flags.dryRun, json: flags.json });
   },
 });

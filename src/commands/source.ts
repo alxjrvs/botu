@@ -93,7 +93,7 @@ const pushCommand = buildCommand<{ message?: string }, [], BoomContext>({
   },
 });
 
-const resetCommand = buildCommand<{ force?: boolean }, [], BoomContext>({
+const resetCommand = buildCommand<{ force?: boolean; yes?: boolean; dryRun?: boolean }, [], BoomContext>({
   docs: { brief: "Discard local changes in the config repo and reset it to origin" },
   parameters: {
     flags: {
@@ -102,19 +102,29 @@ const resetCommand = buildCommand<{ force?: boolean }, [], BoomContext>({
         optional: true,
         brief: "Also discard commits no remote has (refused otherwise)",
       },
+      yes: {
+        kind: "boolean",
+        optional: true,
+        brief: "Skip the confirmation prompt for a dirty tree (for scripts/CI)",
+      },
+      dryRun: { kind: "boolean", optional: true, brief: "Show what would be discarded; change nothing" },
     },
-    aliases: { f: "force" },
+    aliases: { f: "force", y: "yes" },
   },
   async func(flags) {
-    this.process.exitCode = await resetConfigRepo(this, { force: flags.force });
+    this.process.exitCode = await resetConfigRepo(this, {
+      force: flags.force,
+      yes: flags.yes,
+      dryRun: flags.dryRun,
+    });
   },
 });
 
 export const sourceRouteMap = buildRouteMap({
   routes: {
-    // `sync` is the reconcile verb, wired as the route map's `defaultCommand` so it runs on
-    // a bare `boom source` — and `hideRoute`-d so it is never an exposed second spelling.
-    // `boom source` is the one documented way to reconcile; the rest operate the config repo.
+    // `sync` is the reconcile verb, wired as the route map's `defaultCommand` so bare
+    // `boom source` reconciles — and also exposed as the explicit `boom source sync` spelling
+    // (the canonical name; bare `boom source` is its shorthand). The rest operate the config repo.
     sync: syncCommand,
     set: setCommand,
     status: statusCommand,
@@ -124,7 +134,7 @@ export const sourceRouteMap = buildRouteMap({
   },
   defaultCommand: "sync",
   docs: {
-    brief: "Reconcile your machine (bare); or operate the config repo (set | status | diff | push | reset)",
-    hideRoute: { sync: true },
+    brief:
+      "Reconcile your machine (bare, or `sync`); or operate the config repo (set | status | diff | push | reset)",
   },
 });

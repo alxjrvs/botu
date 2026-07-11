@@ -30,20 +30,22 @@ export async function validateConfigFiles(repo: string, report: Reporter): Promi
   }
 }
 
-export async function validateConfig(ctx: BoomContext): Promise<number> {
-  const report = new Reporter(ctx.process.stdout, ctx.process.stderr, colorEnabled(ctx.env));
+export async function validateConfig(ctx: BoomContext, json = false): Promise<number> {
+  const report = new Reporter(ctx.process.stdout, ctx.process.stderr, colorEnabled(ctx.env), json);
   report.header("Validate");
 
   const repo = await resolveConfigDir(ctx.env, ctx.cwd);
   if (!repo) {
     report.fail(NO_CONFIG_REPO_MSG);
+    // No warning tier: validate is pass/fail (a file parses or it doesn't).
+    if (json) return report.finishJson(ctx.process.stdout, false);
     ctx.process.stdout.write("\n");
     return 1;
   }
 
   await validateConfigFiles(repo, report);
 
-  // No warning tier: validate is pass/fail (a file parses or it doesn't).
+  if (json) return report.finishJson(ctx.process.stdout, false);
   return report.finish({
     ok: "validate: config OK",
     fail: (f) => `validate: ${f} invalid file(s)`,

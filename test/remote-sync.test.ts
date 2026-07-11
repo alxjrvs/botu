@@ -457,7 +457,7 @@ test("doctor warns when no remote config is linked", async () => {
     await base(),
   );
   await doctor(ctx);
-  expect(out()).toContain("no remote config linked");
+  expect(out()).toContain("no config repo linked");
 });
 
 // ---- diff -----------------------------------------------------------------
@@ -504,7 +504,7 @@ test("diff fails cleanly when no remote config is linked", async () => {
   const { ctx, out } = ctxFor({ XDG_STATE_HOME: await base(), NO_COLOR: "1" }, await base());
   const rc = await diffConfigRepo(ctx);
   expect(rc).toBe(1);
-  expect(out()).toContain("no remote config linked");
+  expect(out()).toContain("no config repo linked");
 });
 
 // ---- push -----------------------------------------------------------------

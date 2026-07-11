@@ -27,7 +27,7 @@ export async function listRollbacks(ctx: BoomContext): Promise<number> {
   return 0;
 }
 
-export async function rollback(ctx: BoomContext, runId?: string): Promise<number> {
+export async function rollback(ctx: BoomContext, runId?: string, dryRun = false): Promise<number> {
   const report = new Reporter(ctx.process.stdout, ctx.process.stderr, colorEnabled(ctx.env));
   const run = await readRun(ctx.env, runId);
   if (!run) {
@@ -35,9 +35,15 @@ export async function rollback(ctx: BoomContext, runId?: string): Promise<number
     return 1;
   }
 
-  report.header(`rollback ${run.runId}`);
+  report.header(`rollback ${run.runId}${dryRun ? " — dry run (no changes)" : ""}`);
   for (const rec of [...run.done].reverse()) {
     const disp = displayPath(rec.dst, ctx.env);
+    // A destructive replay — preview it under --dry-run so an operator can see exactly what
+    // would be removed vs restored before committing to it.
+    if (dryRun) {
+      report.plan(rec.undo.kind === "remove" ? `would remove ${disp}` : `would restore ${disp}`);
+      continue;
+    }
     try {
       if (rec.undo.kind === "remove") {
         await rm(rec.dst, { recursive: true, force: true });

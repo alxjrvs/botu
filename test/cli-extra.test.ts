@@ -97,6 +97,16 @@ test("hasCommand resolves via PATH (Bun.which), not a shell", () => {
   expect(hasCommand("definitely-not-a-real-binary-xyz", process.env)).toBe(false);
 });
 
+test("completions include flag names derived from the route map", () => {
+  for (const shell of ["bash", "zsh", "fish"] as const) {
+    const s = completionScript(shell);
+    // `dry-run`/`json` are flags, not command names — so their presence proves flag
+    // derivation, and it can't be confused with a command word.
+    expect(s).toContain("dry-run");
+    expect(s).toContain("json");
+  }
+});
+
 // ---- man ---------------------------------------------------------------------
 
 test("man page is valid-ish roff naming every command", () => {
@@ -104,6 +114,13 @@ test("man page is valid-ish roff naming every command", () => {
   expect(m).toContain('.TH BOOM 1 "" "boom 9.9.9"');
   expect(m).toContain(".SH COMMANDS");
   for (const c of commandList()) expect(m).toContain(`.B ${c.name}`);
+});
+
+test("man page documents nested subcommands and their flags", () => {
+  const m = manPage("9.9.9");
+  expect(m).toContain(".SH SUBCOMMANDS");
+  expect(m).toContain(".B source sync"); // a nested route, now documented
+  expect(m).toContain("--json"); // a flag, now documented under its command
 });
 
 // ---- skill -------------------------------------------------------------------
@@ -141,6 +158,18 @@ test("validate accepts a valid base + overlay and reports each file", async () =
   expect(out()).toContain("config OK");
 });
 
+test("validate --json emits a versioned report envelope", async () => {
+  const repo = await base();
+  await writeFile(join(repo, "boomfile.toml"), `[[section]]\nname = "base"\n`);
+  const { ctx, out } = ctxFor({ BOOM_CONFIG: repo, NO_COLOR: "1" }, repo);
+  expect(await validateConfig(ctx, true)).toBe(0);
+  const env = JSON.parse(out());
+  expect(env.schemaVersion).toBe(1);
+  expect(env.ok).toBe(true);
+  expect(env.failures).toBe(0);
+  expect(Array.isArray(env.records)).toBe(true);
+});
+
 test("validate fails (exit 1) on a schema-invalid overlay", async () => {
   const repo = await base();
   await writeFile(join(repo, "boomfile.toml"), `[[section]]\nname = "base"\n`);
@@ -171,6 +200,21 @@ test("doctor reports a parseable config and a writable state dir", async () => {
   expect(out()).toContain("state dir writable");
   // No failures possible here (config valid, state writable); tool warnings may bump to 2.
   expect([0, 2]).toContain(rc);
+});
+
+test("doctor --json emits a versioned report envelope", async () => {
+  const repo = await base();
+  await writeFile(join(repo, "boomfile.toml"), `[[section]]\nname = "x"\n`);
+  const { ctx, out } = ctxFor(
+    { BOOM_CONFIG: repo, XDG_STATE_HOME: await base(), BOOM_OS: "linux", NO_COLOR: "1" },
+    repo,
+  );
+  const rc = await doctor(ctx, true);
+  const env = JSON.parse(out());
+  expect(env.schemaVersion).toBe(1);
+  expect(typeof env.ok).toBe("boolean");
+  expect(Array.isArray(env.records)).toBe(true);
+  expect([0, 2]).toContain(rc); // valid config + writable state; tool warnings may bump to 2
 });
 
 test("doctor fails (exit 1) on an unparseable boomfile", async () => {
