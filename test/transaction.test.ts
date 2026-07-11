@@ -68,6 +68,18 @@ test("rollback removes a freshly applied link", async () => {
   expect(await pathExists(join(sb.home, ".z"))).toBe(false);
 });
 
+test("rollback --dry-run previews the undo without touching anything", async () => {
+  const sb = await sandbox(`[[section]]\nname = "S"\nlink = [{ src = ".z", dst = "~/.z" }]\n`);
+  await sb.write(".z", "z");
+  expect(await reconcile("sync", sb.ctx, {})).toBe(0);
+  const link = join(sb.home, ".z");
+  expect(await pathExists(link)).toBe(true);
+  sb.clear();
+  expect(await rollback(sb.ctx, undefined, true)).toBe(0); // dry run
+  expect(sb.out()).toContain("would remove");
+  expect(await pathExists(link)).toBe(true); // still linked — nothing was undone
+});
+
 test("newRunId is unique across same-millisecond calls (no journal collision)", () => {
   // Back-to-back runs in one process must never share an id — the millisecond-resolution
   // timestamp alone can collide, which would make two runs write one journal file.

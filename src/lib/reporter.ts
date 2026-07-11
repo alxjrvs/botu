@@ -13,6 +13,18 @@ export interface ReportRecord {
   readonly msg: string;
 }
 
+// Version of the `--json` report envelope. Bump when its shape changes so a script consuming
+// `verify --json` / `doctor --json` / etc. can detect (and refuse) an unknown shape.
+export const REPORT_SCHEMA_VERSION = 1;
+
+export interface ReportEnvelope {
+  readonly schemaVersion: number;
+  readonly ok: boolean;
+  readonly warnings: number;
+  readonly failures: number;
+  readonly records: readonly ReportRecord[];
+}
+
 export class Reporter {
   warnings = 0;
   failures = 0;
@@ -85,5 +97,25 @@ export class Reporter {
     }
     this.ok(msgs.ok);
     return 0;
+  }
+
+  // The one `--json` envelope shape, shared by every scriptable command so their reports
+  // can't drift. Built from the tally + collected records.
+  envelope(schemaVersion = REPORT_SCHEMA_VERSION): ReportEnvelope {
+    return {
+      schemaVersion,
+      ok: this.failures === 0,
+      warnings: this.warnings,
+      failures: this.failures,
+      records: this.records,
+    };
+  }
+
+  // The json-mode twin of finish(): write the envelope and return the exit code. failures→1;
+  // warnings→2 only for a command with a warning tier (verify/doctor), else 0 — the same
+  // 0/2/1 ladder finish() applies to human output, so the two modes agree on exit codes.
+  finishJson(out: Stream, hasWarnTier: boolean, schemaVersion = REPORT_SCHEMA_VERSION): number {
+    out.write(`${JSON.stringify(this.envelope(schemaVersion))}\n`);
+    return this.failures > 0 ? 1 : hasWarnTier && this.warnings > 0 ? 2 : 0;
   }
 }

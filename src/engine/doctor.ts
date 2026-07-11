@@ -29,8 +29,8 @@ const TOOLS: ReadonlyArray<{ cmd: string; why: string }> = [
 
 const KEYCHAIN_ITEM = "op-claude-agent";
 
-export async function doctor(ctx: BoomContext): Promise<number> {
-  const report = new Reporter(ctx.process.stdout, ctx.process.stderr, colorEnabled(ctx.env));
+export async function doctor(ctx: BoomContext, json = false): Promise<number> {
+  const report = new Reporter(ctx.process.stdout, ctx.process.stderr, colorEnabled(ctx.env), json);
 
   report.header("Config");
   const repo = await resolveConfigDir(ctx.env, ctx.cwd);
@@ -84,6 +84,7 @@ export async function doctor(ctx: BoomContext): Promise<number> {
     report.fail(`state dir not writable (${stateDir}): ${(e as Error).message}`);
   }
 
+  if (json) return report.finishJson(ctx.process.stdout, true);
   return report.finish({
     ok: "doctor: all checks passed",
     warn: (w) => `doctor: ${w} warning(s)`,

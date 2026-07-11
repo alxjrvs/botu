@@ -28,6 +28,7 @@ import { Reporter } from "../lib/reporter.ts";
 export interface ResetOptions {
   readonly force?: boolean;
   readonly yes?: boolean;
+  readonly dryRun?: boolean;
 }
 
 export async function resetConfigRepo(ctx: BoomContext, opts: ResetOptions = {}): Promise<number> {
@@ -43,6 +44,19 @@ export async function resetConfigRepo(ctx: BoomContext, opts: ResetOptions = {})
   if (fetch.code !== 0) {
     report.fail(`could not reach ${remote.url}: ${fetch.stderr || "fetch failed"}`);
     return 1;
+  }
+
+  if (opts.dryRun) {
+    const target = hasUpstream(path, ctx.env) ? "@{u}" : (remote.ref ?? "HEAD");
+    report.plan(`would reset ${path} to ${target} and clean untracked files`);
+    if (!isClean(path, ctx.env)) report.plan("would discard uncommitted local changes");
+    if (hasUnpushedCommits(path, ctx.env))
+      report.plan(
+        opts.force
+          ? "would discard unpushed commit(s) (--force)"
+          : "would refuse: unpushed commit(s) present — needs --force",
+      );
+    return 0;
   }
 
   if (!opts.force && hasUnpushedCommits(path, ctx.env)) {

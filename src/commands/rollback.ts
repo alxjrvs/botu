@@ -5,7 +5,11 @@ import type { BoomContext } from "../context.ts";
 import { listRollbacks, rollback } from "../engine/rollback.ts";
 import { str } from "./flags.ts";
 
-export const rollbackCommand = buildCommand<{ runId?: string; list?: boolean }, [], BoomContext>({
+export const rollbackCommand = buildCommand<
+  { runId?: string; list?: boolean; dryRun?: boolean },
+  [],
+  BoomContext
+>({
   docs: { brief: "Undo a previous sync (most recent run, or --run-id); --list to see them" },
   parameters: {
     flags: {
@@ -15,9 +19,12 @@ export const rollbackCommand = buildCommand<{ runId?: string; list?: boolean }, 
         optional: true,
         brief: "List the runs available to roll back; change nothing",
       },
+      dryRun: { kind: "boolean", optional: true, brief: "Show what would be undone; change nothing" },
     },
   },
   async func(flags) {
-    this.process.exitCode = flags.list ? await listRollbacks(this) : await rollback(this, flags.runId);
+    this.process.exitCode = flags.list
+      ? await listRollbacks(this)
+      : await rollback(this, flags.runId, flags.dryRun);
   },
 });

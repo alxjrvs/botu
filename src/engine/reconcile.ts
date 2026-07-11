@@ -9,16 +9,16 @@ import type { Boomfile, Section } from "../config/schema.ts";
 import type { BoomContext } from "../context.ts";
 import { colorEnabled } from "../lib/color.ts";
 import { displayPath, filesEqual, linkTarget, pathExists } from "../lib/fs.ts";
-import { Reporter } from "../lib/reporter.ts";
+import { REPORT_SCHEMA_VERSION, Reporter } from "../lib/reporter.ts";
 import { displace, Journal, newRunId, pruneRuns, readRun } from "./journal.ts";
 import { finalizeResources, reconcileSection } from "./registry.ts";
 import { backupsDir, type ManifestEntry, readManifest, writeManifest } from "./state.ts";
 import { syncConfigRepo } from "./sync.ts";
 import type { LinkMode, ReconcileCtx, Verb } from "./types.ts";
 
-// Version of the `--json` report envelope. Bump when its shape changes so a script
-// consuming `verify --json` / `sync --json` can detect (and refuse) an unknown shape.
-export const REPORT_SCHEMA_VERSION = 1;
+// Re-exported (the envelope shape lives in reporter.ts now) so existing importers of the
+// reconcile module's constant keep working.
+export { REPORT_SCHEMA_VERSION };
 
 export interface ReconcileOptions {
   readonly only?: string[];
@@ -97,26 +97,10 @@ export async function reconcile(verb: Verb, ctx: BoomContext, opts: ReconcileOpt
   const json = opts.json ?? false;
   const report = new Reporter(ctx.process.stdout, ctx.process.stderr, colorEnabled(ctx.env), json);
 
-  // The same structured envelope for every verb, so each reconcile verb is scriptable,
-  // not just the read-only one. One writer — no per-branch copy of the object literal.
-  const writeEnvelope = (): void => {
-    ctx.process.stdout.write(
-      `${JSON.stringify({
-        schemaVersion: REPORT_SCHEMA_VERSION,
-        ok: report.failures === 0,
-        warnings: report.warnings,
-        failures: report.failures,
-        records: report.records,
-      })}\n`,
-    );
-  };
-
   const finish = (): number => {
-    if (json) {
-      writeEnvelope();
-      // verify's exit code carries a warning tier (0/2/1); mutating verbs are 0/1.
-      return report.failures > 0 ? 1 : verb === "verify" && report.warnings > 0 ? 2 : 0;
-    }
+    // The same structured envelope for every verb (verify carries a warning tier, mutating
+    // verbs are 0/1), shared with doctor/validate via Reporter.finishJson.
+    if (json) return report.finishJson(ctx.process.stdout, verb === "verify");
     // Human output: the shared Reporter epilogue owns the blank line + 0/2/1 mapping.
     // verify has a warning tier; the mutating verbs (sync/repair/uninstall) do not.
     return verb === "verify"

@@ -4,10 +4,12 @@ import { buildCommand } from "@stricli/core";
 import type { BoomContext } from "../context.ts";
 import { validateConfig } from "../engine/validate.ts";
 
-export const validateCommand = buildCommand<Record<never, never>, [], BoomContext>({
+export const validateCommand = buildCommand<{ json?: boolean }, [], BoomContext>({
   docs: { brief: "Parse + schema-check the boomfile (and overlays); change nothing" },
-  parameters: {},
-  async func() {
-    this.process.exitCode = await validateConfig(this);
+  parameters: {
+    flags: { json: { kind: "boolean", optional: true, brief: "Emit a structured JSON report" } },
+  },
+  async func(flags) {
+    this.process.exitCode = await validateConfig(this, flags.json);
   },
 });

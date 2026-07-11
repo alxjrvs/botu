@@ -4,10 +4,12 @@ import { buildCommand } from "@stricli/core";
 import type { BoomContext } from "../context.ts";
 import { doctor } from "../engine/doctor.ts";
 
-export const doctorCommand = buildCommand<Record<never, never>, [], BoomContext>({
+export const doctorCommand = buildCommand<{ json?: boolean }, [], BoomContext>({
   docs: { brief: "Check boom's own preconditions (config, tools, keychain, state)" },
-  parameters: {},
-  async func() {
-    this.process.exitCode = await doctor(this);
+  parameters: {
+    flags: { json: { kind: "boolean", optional: true, brief: "Emit a structured JSON report" } },
+  },
+  async func(flags) {
+    this.process.exitCode = await doctor(this, flags.json);
   },
 });
