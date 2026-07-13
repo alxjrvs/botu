@@ -37,6 +37,7 @@ export async function rollback(ctx: BoomContext, runId?: string, dryRun = false)
   }
 
   report.header(`rollback ${run.runId}${dryRun ? " — dry run (no changes)" : ""}`);
+  const reversed: string[] = [];
   for (const rec of [...run.done].reverse()) {
     const disp = displayPath(rec.dst, ctx.env);
     // A destructive replay — preview it under --dry-run so an operator can see exactly what
@@ -53,20 +54,18 @@ export async function rollback(ctx: BoomContext, runId?: string, dryRun = false)
         await restoreFrom(rec.undo.from, rec.dst);
         report.ok(`restored ${disp}`);
       }
+      reversed.push(rec.dst);
     } catch (e) {
       report.fail(`${disp}: ${(e as Error).message}`);
     }
   }
 
-  // The reversed destinations are no longer boom-owned (removed, or restored to a foreign
-  // file) — drop them from the manifest so state matches disk. Without this the manifest
-  // still claims ownership and the next verify/sync sees phantom drift. (Not on --dry-run,
-  // which changed nothing on disk.)
-  if (!dryRun)
-    await removeManifestEntries(
-      ctx.env,
-      run.done.map((r) => r.dst),
-    );
+  // Drop from the manifest only the destinations we ACTUALLY reversed — they're no longer
+  // boom-owned (removed, or restored to a foreign file), so state matches disk. A dst whose
+  // reversal threw is deliberately left owned: the boom-created file is still there, so
+  // keeping the ownership record means the next sync can still reap it rather than orphaning
+  // an untracked, un-reapable file. (No manifest change on --dry-run — nothing moved.)
+  if (!dryRun) await removeManifestEntries(ctx.env, reversed);
 
   // Links/copies are reversed above; `run`/`hook` side effects can't be, so surface
   // them so the operator knows what state rollback did NOT restore.

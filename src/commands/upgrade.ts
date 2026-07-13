@@ -184,8 +184,10 @@ export const upgradeCommand = buildCommand<UpgradeFlags, [], BoomContext>({
     }
     report.ok("checksum verified");
 
-    // Stage beside the target (same filesystem → rename is atomic) then swap.
-    let staged: string;
+    // Stage beside the target (same filesystem → rename is atomic) then swap. `staged` is
+    // declared out here so the catch can clean it up no matter where the flow threw —
+    // stageBinary's own chmod, codesign, or the swap — never leaving a stray `.boom.upgrade.*`.
+    let staged: string | undefined;
     try {
       staged = await stageBinary(self, bin);
 
@@ -209,6 +211,7 @@ export const upgradeCommand = buildCommand<UpgradeFlags, [], BoomContext>({
 
       await swapInto(self, staged);
     } catch (err) {
+      if (staged) await rm(staged, { force: true });
       report.fail(`install failed: ${(err as Error).message}`);
       this.process.exitCode = 1;
       return;

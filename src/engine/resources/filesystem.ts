@@ -58,10 +58,6 @@ async function applyLink(
     else report.plan(`${disp} would be linked`);
     return;
   }
-  if (ctx.resumeDone?.has(dst)) {
-    report.skip(`${disp} (resumed — already applied)`);
-    return;
-  }
   if (!(await ensureParentDir(dirname(dst), mode, ctx))) {
     report.skip(`${disp} parent exists but is not a directory — skipped`);
     return;
@@ -168,10 +164,6 @@ export async function reconcileCopy(entry: Link, ctx: ReconcileCtx): Promise<voi
       }
       if (ctx.dryRun) {
         report.plan(`${disp} would be copied`);
-        return;
-      }
-      if (ctx.resumeDone?.has(dst)) {
-        report.skip(`${disp} (resumed — already applied)`);
         return;
       }
       await ctx.journal?.intent("copy", dst);

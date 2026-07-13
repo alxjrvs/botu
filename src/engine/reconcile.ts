@@ -149,23 +149,19 @@ export async function reconcile(verb: Verb, ctx: BoomContext, opts: ReconcileOpt
   let journal: Journal | undefined;
   try {
     let backupRoot: string | undefined;
-    let resumeDone: ReadonlySet<string> | undefined;
     if (mutating) {
       let runId = newRunId();
-      // Read the prior interrupted run's done-set BEFORE opening this run's journal. The
-      // sqlite Journal inserts its run row eagerly, so once it exists it is the newest run —
-      // an untargeted readRun() would then resolve to *this* empty run and resume nothing.
+      // --resume continues INTO the interrupted run — reuse its id and backup dir — rather
+      // than opening a fresh run. A fresh run would leave the interrupted pass's displaced
+      // originals attached to the OLD run's rows: invisible to `rollback` (which reads the
+      // latest run) and reapable by prune. Only an uncommitted (genuinely interrupted) run
+      // is resumable; a committed one has nothing to resume, so fall through to a new run.
+      // Re-application itself needs no journal-based skip list: reconcile is naturally
+      // idempotent (an already-correct link/copy is skipped by the reality checks in
+      // filesystem.ts), so resume just re-runs and only touches what isn't already in place.
       if (opts.resume) {
         const prior = await readRun(ctx.env);
-        // Resume INTO the interrupted run — reuse its id and backup dir — rather than
-        // opening a fresh run. A fresh run would leave the interrupted pass's displaced
-        // originals attached to the OLD run's rows: invisible to `rollback` (which reads the
-        // latest run) and reapable by prune. Only an uncommitted (genuinely interrupted) run
-        // is resumable; a committed one has nothing to resume, so fall through to a new run.
-        if (prior && !prior.committed) {
-          runId = prior.runId;
-          resumeDone = new Set(prior.done.map((d) => d.dst));
-        }
+        if (prior && !prior.committed) runId = prior.runId;
       }
       journal = new Journal(ctx.env, runId);
       backupRoot = join(backupsDir(ctx.env), runId);
@@ -184,7 +180,6 @@ export async function reconcile(verb: Verb, ctx: BoomContext, opts: ReconcileOpt
       declared: [],
       journal,
       backupRoot,
-      resumeDone,
       dirty: new Set<string>(),
     };
 

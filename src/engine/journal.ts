@@ -103,15 +103,14 @@ export class Journal {
 // deleted oldest-first — run ids sort chronologically. Called after a clean commit.
 export async function pruneRuns(env: Env, keep = 10): Promise<void> {
   const stale = withDb(env, (db) => {
-    const rows = db.query("SELECT run_id, committed FROM runs ORDER BY run_id").all() as {
-      run_id: string;
-      committed: number;
-    }[];
-    // Keep the `keep` most recent runs AND every uncommitted (interrupted) run, whatever its
-    // age: an interrupted run's backups are exactly what a later `--resume`/`rollback` needs,
-    // so a count-only prune must never reap them out from under a run still in flight.
-    const recent = new Set(rows.slice(Math.max(0, rows.length - keep)).map((r) => r.run_id));
-    const drop = rows.filter((r) => r.committed === 1 && !recent.has(r.run_id)).map((r) => r.run_id);
+    const ids = (db.query("SELECT run_id FROM runs ORDER BY run_id").all() as { run_id: string }[]).map(
+      (r) => r.run_id,
+    );
+    // Pure count-bound (drop oldest beyond `keep`), committed or not — this bounds growth
+    // even when a run fails every sync. The most-recent run (the only one `--resume` or an
+    // untargeted `rollback` ever reaches) is always inside the kept window, so its backups
+    // are never reaped out from under it; older interrupted runs are superseded history.
+    const drop = ids.slice(0, Math.max(0, ids.length - keep));
     const delRun = db.query("DELETE FROM runs WHERE run_id = ?");
     const delOps = db.query("DELETE FROM ops WHERE run_id = ?");
     const delSides = db.query("DELETE FROM sides WHERE run_id = ?");

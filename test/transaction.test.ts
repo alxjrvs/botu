@@ -69,23 +69,29 @@ test("rollback removes a freshly applied link", async () => {
   expect(await pathExists(join(sb.home, ".z"))).toBe(false);
 });
 
-test("--resume skips destinations a prior interrupted run already recorded", async () => {
+test("--resume re-applies a missing dst and skips one already correct on disk (idempotent)", async () => {
   const sb = await sandbox(
     `[[section]]\nname = "S"\nlink = [{ src = ".a", dst = "~/.a" }, { src = ".b", dst = "~/.b" }]\n`,
   );
   await sb.write(".a", "a");
   await sb.write(".b", "b");
-  // A prior run that recorded ~/.a as done, then was interrupted (never committed). This is
-  // the case the eager sqlite run-row insert broke: the new run must NOT shadow this one.
+  // Simulate an interrupted run: ~/.b was actually linked; ~/.a never got created (its
+  // create threw/was killed). Resume must trust the DISK, not the journal — re-applying the
+  // missing ~/.a and skipping the already-correct ~/.b — so a create that failed after its
+  // journal row was written is retried, not silently declared done.
+  await symlink(join(sb.repo, ".b"), join(sb.home, ".b"));
   const prior = new Journal(sb.ctx.env, newRunId());
+  // Both got a journal `done` row, but only ~/.b landed on disk — ~/.a's create failed
+  // after its row was written. A journal row must NOT cause resume to skip ~/.a.
   await prior.done("link", join(sb.home, ".a"), { kind: "remove" });
+  await prior.done("link", join(sb.home, ".b"), { kind: "remove" });
+  prior.close();
 
   sb.clear();
   expect(await reconcile("sync", sb.ctx, { resume: true })).toBe(0);
-  const out = sb.out();
-  expect(out).toContain("resumed — already applied"); // ~/.a skipped from the prior done-set
-  expect(await pathExists(join(sb.home, ".a"))).toBe(false); // trusted as already done, not re-linked
-  expect(await linkTarget(join(sb.home, ".b"))).toBe(join(sb.repo, ".b")); // ~/.b was new → applied
+  expect(sb.out()).toContain("already linked"); // ~/.b skipped by the reality check
+  expect(await linkTarget(join(sb.home, ".a"))).toBe(join(sb.repo, ".a")); // ~/.a re-applied
+  expect(await linkTarget(join(sb.home, ".b"))).toBe(join(sb.repo, ".b")); // ~/.b intact
 });
 
 test("rollback --dry-run previews the undo without touching anything", async () => {
