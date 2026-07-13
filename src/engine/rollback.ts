@@ -6,6 +6,7 @@ import { colorEnabled } from "../lib/color.ts";
 import { displayPath, restoreFrom } from "../lib/fs.ts";
 import { Reporter } from "../lib/reporter.ts";
 import { listRuns, readRun } from "./journal.ts";
+import { removeManifestEntries } from "./state.ts";
 
 // `boom rollback --list` — enumerate the retained runs so the ids `--run-id` accepts are
 // discoverable, instead of forcing a hand `ls` of the state dir. Exit 0 always; it reads.
@@ -56,6 +57,16 @@ export async function rollback(ctx: BoomContext, runId?: string, dryRun = false)
       report.fail(`${disp}: ${(e as Error).message}`);
     }
   }
+
+  // The reversed destinations are no longer boom-owned (removed, or restored to a foreign
+  // file) — drop them from the manifest so state matches disk. Without this the manifest
+  // still claims ownership and the next verify/sync sees phantom drift. (Not on --dry-run,
+  // which changed nothing on disk.)
+  if (!dryRun)
+    await removeManifestEntries(
+      ctx.env,
+      run.done.map((r) => r.dst),
+    );
 
   // Links/copies are reversed above; `run`/`hook` side effects can't be, so surface
   // them so the operator knows what state rollback did NOT restore.
