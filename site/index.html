@@ -382,9 +382,10 @@
   /* ---- FOOTER ---- */
   footer{position:relative;padding:60px 0 46px;background:var(--bg);border-top:6px solid var(--ink);}
   .foot{text-align:center;}
-  .foot canvas{display:block;margin:0 auto 16px;filter:drop-shadow(5px 5px 0 rgba(0,0,0,.5));}
   .foot h2{color:var(--text);font-size:clamp(34px,5.6vw,62px);margin:0;line-height:.9;}
-  .foot h2 .go{color:var(--cyan);} :root[data-theme="light"] .foot h2 .go{color:#0C6F8B;}
+  /* the O in "Open" is the live portal mark (rotates via the spin loop) */
+  .foot .opnmk{display:inline-block;width:.82em;height:.82em;vertical-align:-0.16em;margin:0 .01em;filter:drop-shadow(4px 4px 0 rgba(0,0,0,.5));}
+  .vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;}
   .foot .links{display:flex;gap:22px;justify-content:center;flex-wrap:wrap;margin:22px 0 8px;}
   .foot .links a{color:var(--s-key);font-size:15px;}
   .foot .wm{font-family:var(--font-display);font-weight:800;text-transform:lowercase;color:var(--muted);}
@@ -713,8 +714,7 @@ brewfile = <span class="s">"Brewfile"</span></pre>
 <footer>
   <div class="wrap">
     <div class="foot">
-      <canvas data-mark="marktrans" width="170" height="170" style="width:56px;height:56px" aria-hidden="true"></canvas>
-      <h2 class="disp">The portal's open. <span class="go">Go build!</span></h2>
+      <h2 class="disp">The portal's <canvas class="opnmk" data-mark="marktrans" width="120" height="120" aria-hidden="true"></canvas><span class="vh">o</span>pen.</h2>
       <div class="links">
         <a href="https://github.com/alxjrvs/boom">GitHub</a>
         <a href="spec.html">Docs</a>
@@ -897,16 +897,16 @@ if(bar&&heroWord&&cover&&logo&&!REDUCE){
       heroMk.style.opacity=(1-seg(0.32,0.44,p)).toFixed(3);}
     if(heroRays){const b=Math.sin(seg(0.24,0.46,p)*Math.PI);heroRays.style.opacity=(b*0.95).toFixed(3);
       heroRays.style.transform=`translate(-50%,-50%) scale(${(0.35+b*1.6).toFixed(3)})`;}
-    // nav portal: bloom bar-CENTRED as the exit mouth, then shrink to the "!" dot
-    logo.style.opacity=seg(0.12,0.2,p).toFixed(3);
+    // nav portal FLASHES in with the same warm fuzz the hero implodes into, then emits BOOM
     const mo=1-eIO(seg(0.5,0.85,p));                  // mouth factor: 1 big+centred → 0 dot
-    if(headMk)headMk.style.transform=`translate(0px,${(offY*mo).toFixed(1)}px) scale(${(1+2.4*mo).toFixed(3)})`;
+    const fl=Math.sin(seg(0.09,0.23,p)*Math.PI);      // flash bell as the portal pops in (~p.16)
+    logo.style.opacity=seg(0.13,0.16,p).toFixed(3);   // sharp pop-in — a flash, not a fade
+    if(headMk)headMk.style.transform=`translate(0px,${(offY*mo).toFixed(1)}px) scale(${((1+2.4*mo)*(1+0.22*fl)).toFixed(3)})`;
+    if(headRays){headRays.style.opacity=(fl*0.95).toFixed(3);   // burst rides the centred mouth
+      headRays.style.transform=`translate(-50%,-50%) translate(0px,${(offY*mo).toFixed(1)}px) scale(${(0.45+fl*1.1).toFixed(3)})`;}
     // nav glyphs emerge OUT (each after its own entry), OVER the portal, un-morphing into place
     headL.forEach((el,i)=>{const w=winOut(i), u=eOut(seg(w.xs,w.xe,p)), v=nVec[i];morph(el,v[0],v[1],v[2],1-u,1-u,cl(u*1.6,0,1),v[3]);});
     if(nStem){const u=eOut(seg(STEM.xs,STEM.xe,p));morph(headStem,nStem[0],nStem[1],nStem[2],1-u,1-u,cl(u*1.6,0,1),nStem[3]);}
-    // the nav BOOM! blooms out of the same warm fuzz as it lands (mirrors the hero implosion)
-    if(headRays){const b=Math.sin(seg(0.72,1.0,p)*Math.PI);headRays.style.opacity=(b*0.95).toFixed(3);
-      headRays.style.transform=`translate(-50%,-50%) scale(${(0.4+b*1.3).toFixed(3)})`;}
   };
   measure();update();
   addEventListener("scroll",()=>{if(!ticking){ticking=true;requestAnimationFrame(update);}},{passive:true});
