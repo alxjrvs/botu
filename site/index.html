@@ -147,7 +147,9 @@
   /* BOOM! wordmark — per-letter brand colors; the "!" dot IS the free-floating hex mark */
   .logo{display:inline-flex;align-items:center;gap:1px;font-family:var(--font-display);font-weight:800;text-transform:uppercase;font-size:31px;letter-spacing:-.01em;line-height:1;}
   .logo .l1{color:var(--magenta);} .logo .l2{color:var(--cyan);} .logo .l3{color:var(--violet);} .logo .l4{color:var(--solar);}
-  .bang{display:inline-flex;flex-direction:column;align-items:center;gap:2px;margin-left:3px;}
+  .bang{display:inline-flex;flex-direction:column;align-items:center;gap:2px;margin-left:3px;position:relative;z-index:1;}
+  /* nav wordmark rides OVER the portal as it emerges (hero letters stay behind their portal) */
+  .logo .l1,.logo .l2,.logo .l3,.logo .l4{position:relative;z-index:2;}
   .bang .stem{width:4px;height:15px;background:var(--magenta);border-radius:1px;}
   .bang canvas{width:11px;height:11px;display:block;}
   .bar-nav{display:flex;gap:22px;margin-left:18px;}
@@ -839,19 +841,25 @@ if(bar&&heroWord&&cover&&logo&&!matchMedia("(prefers-reduced-motion: reduce)").m
   const winOut=i=>{const xs=0.20+(3-i)*0.08;return {xs,xe:xs+0.19};};
   const STEM={es:0,ee:0.12, xs:0.78,xe:0.92};         // "!" bar: IN with M, OUT last
   // anisotropic morph, t 0(rest)→1(gone): stretch ALONG travel, thin PERPENDICULAR.
-  const stretch=t=>[(1-t*t*t)*(1+1.8*t), (1-t)*(1-0.7*t)];
-  const morph=(el,dx,dy,ang,t,tt,op)=>{const s=stretch(t);   // tt = fraction of the way to the portal
-    el.style.transform=`translate(${(dx*tt).toFixed(1)}px,${(dy*tt).toFixed(1)}px) rotate(${ang.toFixed(3)}rad) scale(${s[0].toFixed(3)},${s[1].toFixed(3)}) rotate(${(-ang).toFixed(3)}rad)`;
+  const stretch=t=>[(1-t*t*t)*(1+1.5*t), (1-t)*(1-0.7*t)];
+  // Translate so the glyph's LEADING edge (hf = its half-extent/dist toward the target) tracks
+  // to the portal and never overshoots: the tail trails back and is consumed into the core.
+  const morph=(el,dx,dy,ang,t,prog,op,hf)=>{const s=stretch(t),a=s[0],TT=hf*(1-a)+(1-hf)*prog;
+    el.style.transform=`translate(${(dx*TT).toFixed(1)}px,${(dy*TT).toFixed(1)}px) rotate(${ang.toFixed(3)}rad) scale(${a.toFixed(3)},${s[1].toFixed(3)}) rotate(${(-ang).toFixed(3)}rad)`;
     el.style.opacity=op.toFixed(3);};
-  const occ=s=>1-cl((s-0.75)/0.25,0,1);               // stay opaque; the throat hides them, this is just a safety fade
+  const occ=s=>1-cl((s-0.8)/0.2,0,1);                 // stay opaque; the throat hides them, this is just a safety fade
 
   const ctr=el=>{const r=el.getBoundingClientRect();return [r.left+r.width/2, r.top+r.height/2];};
-  const vec=(el,P)=>{const c=ctr(el);const dx=P[0]-c[0],dy=P[1]-c[1];return [dx,dy,Math.atan2(dy,dx)];};
+  const core=el=>{const r=el.getBoundingClientRect();return [r.left+0.64*r.width, r.top+0.37*r.height];}; // solar core (V)
+  const vec=(el,P)=>{const r=el.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;
+    const dx=P[0]-cx,dy=P[1]-cy,th=Math.atan2(dy,dx),dist=Math.hypot(dx,dy)||1;
+    const h=0.5*(Math.abs(r.width*Math.cos(th))+Math.abs(r.height*Math.sin(th)));   // half-extent toward the portal
+    return [dx,dy,th,cl(h/dist,0,0.7)];};
   const clr=[...heroL,...headL,heroStem,headStem,heroMk,headMk,heroRays].filter(Boolean);
   let hVec=[], nVec=[], hStem=null, nStem=null, offY=0, ticking=false;
   const measure=()=>{
     clr.forEach(el=>{el.style.transform="";el.style.opacity="";});logo.style.opacity="";headMk.style.transform="";
-    const hp=ctr(heroMk), npDot=ctr(headMk), barc=ctr(barIn);
+    const hp=core(heroMk), npDot=ctr(headMk), barc=ctr(barIn);
     offY=barc[1]-npDot[1];                            // lift that centres the nav mouth in the bar
     hVec=heroL.map(el=>vec(el,hp)); hStem=heroStem&&vec(heroStem,hp);
     nVec=headL.map(el=>vec(el,[npDot[0],barc[1]]));   // letters emerge from the bar-centred mouth
@@ -862,8 +870,8 @@ if(bar&&heroWord&&cover&&logo&&!matchMedia("(prefers-reduced-motion: reduce)").m
     const p=cl(window.scrollY/D,0,1), spin=p*TAU*2.4;
     bar.style.setProperty("--p",seg(0,0.4,p).toFixed(3));
     // hero glyphs funnel IN fast — morphed toward the portal; the throat hides them past the hole
-    heroL.forEach((el,i)=>{const w=winIn(i), s=seg(w.es,w.ee,p), v=hVec[i];morph(el,v[0],v[1],v[2],s,eIn(s),occ(s));});
-    if(hStem){const s=seg(STEM.es,STEM.ee,p);morph(heroStem,hStem[0],hStem[1],hStem[2],s,eIn(s),occ(s));}
+    heroL.forEach((el,i)=>{const w=winIn(i), s=seg(w.es,w.ee,p), v=hVec[i];morph(el,v[0],v[1],v[2],s,eIn(s),occ(s),v[3]);});
+    if(hStem){const s=seg(STEM.es,STEM.ee,p);morph(heroStem,hStem[0],hStem[1],hStem[2],s,eIn(s),occ(s),hStem[3]);}
     if(tube)tube.style.opacity=(1-seg(0,0.18,p)).toFixed(3);
     // hero portal: dark throat swallows the glyphs, then IMPLODE + warm fuzz (still on-screen)
     if(heroMk){if(p<0.5)drawHex(heroMk.getContext("2d"),heroMk.width,false,spin,seg(0.03,0.12,p));
@@ -874,11 +882,11 @@ if(bar&&heroWord&&cover&&logo&&!matchMedia("(prefers-reduced-motion: reduce)").m
     // nav portal: bloom bar-CENTRED as the exit mouth, spin, then shrink to the "!" dot
     logo.style.opacity=seg(0.12,0.2,p).toFixed(3);
     const mo=1-eIO(seg(0.5,0.85,p));                  // mouth factor: 1 big+centred → 0 dot
-    if(headMk){drawHex(headMk.getContext("2d"),headMk.width,false,spin,Math.min(seg(0.12,0.22,p),1-seg(0.78,0.92,p)));
+    if(headMk){drawHex(headMk.getContext("2d"),headMk.width,false,spin);   // no throat: nav words ride OVER the portal
       headMk.style.transform=`translate(0px,${(offY*mo).toFixed(1)}px) scale(${(1+2.4*mo).toFixed(3)})`;}
-    // nav glyphs emerge OUT (each after its own entry), un-morphing into place
-    headL.forEach((el,i)=>{const w=winOut(i), u=eOut(seg(w.xs,w.xe,p)), v=nVec[i];morph(el,v[0],v[1],v[2],1-u,1-u,cl(u*1.6,0,1));});
-    if(nStem){const u=eOut(seg(STEM.xs,STEM.xe,p));morph(headStem,nStem[0],nStem[1],nStem[2],1-u,1-u,cl(u*1.6,0,1));}
+    // nav glyphs emerge OUT (each after its own entry), OVER the portal, un-morphing into place
+    headL.forEach((el,i)=>{const w=winOut(i), u=eOut(seg(w.xs,w.xe,p)), v=nVec[i];morph(el,v[0],v[1],v[2],1-u,1-u,cl(u*1.6,0,1),v[3]);});
+    if(nStem){const u=eOut(seg(STEM.xs,STEM.xe,p));morph(headStem,nStem[0],nStem[1],nStem[2],1-u,1-u,cl(u*1.6,0,1),nStem[3]);}
   };
   measure();update();
   addEventListener("scroll",()=>{if(!ticking){ticking=true;requestAnimationFrame(update);}},{passive:true});
