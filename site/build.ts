@@ -118,6 +118,7 @@ const head = (o: { title: string; desc: string; slug: string; ogType?: string })
 <title>${o.title}</title>
 <meta name="description" content="${d}">
 <link rel="canonical" href="${url}">
+<meta name="robots" content="index,follow">
 <meta name="color-scheme" content="dark light">
 <meta name="theme-color" content="#08060F">
 <meta property="og:type" content="${o.ogType ?? "website"}">
@@ -126,9 +127,10 @@ const head = (o: { title: string; desc: string; slug: string; ogType?: string })
 <meta property="og:description" content="${d}">
 <meta property="og:url" content="${url}">
 <meta property="og:image" content="${SITE_URL}/og.png">
+<meta property="og:image:type" content="image/png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="BoomTube — the one-binary declarative machine reconciler.">
+<meta property="og:image:alt" content="The BOOMTUBE wordmark beside a Kirby boom-tube portal: a declarative machine reconciler — the file goes in, the machine comes out.">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="${t}">
 <meta name="twitter:description" content="${d}">
