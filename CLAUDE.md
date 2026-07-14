@@ -45,6 +45,27 @@ of record.
   breadcrumbs live beside it under the state dir.
 - Commit messages: `type(scope): summary`. End with the co-author trailer.
 
+## Site (docs & landing) — keep it current
+
+The site lives in `site/` and deploys to GitHub Pages on merge to `main`
+(`.github/workflows/pages.yml`, triggered by `site/**`, `SPEC.md`, `docs/**`).
+`site/index.html` is the hand-authored landing (self-contained: inline styles + the
+canvas-drawn hex-tunnel mark/glyphs on the cosmic design tokens); `site/build.ts`
+generates the doc pages from repo markdown.
+
+- **Version lockstep.** When you bump the release (`package.json` + `Formula/boom.rb`),
+  also bump the version printed in `site/index.html` (footer `.meta`, e.g. `v0.13.0`).
+  A stale footer version is drift — treat it as part of the version bump.
+- **True to the surface.** The landing is deliberately *high-level* (no exhaustive flag
+  tables — the live reference is the generated docs). When commands, the `boomfile.toml`
+  schema, or install steps change, update the landing's high-level copy and its
+  *illustrative* examples so nothing on it is wrong.
+- **Voice.** Bombastic comic-splash tone is intended, but **no explicit comic-lore proper
+  nouns** (no "New Genesis"/"New Gods"/character names). The energy is the product's voice.
+- **Chrome ↔ generated pages.** `site/build.ts` lifts shared chrome out of `index.html`;
+  if you restructure the landing, keep the generator's extraction (and any lore in its
+  page captions) in sync, or the Pages build breaks.
+
 ## Merge policy (enforced by branch protection + CI)
 
 - **Every change lands via PR; direct pushes to `main` are blocked.**

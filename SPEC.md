@@ -4,7 +4,7 @@
 (executable: **`boom`**), compiled from **TypeScript on Bun**, that converges a
 machine to a declared state — dotfiles, packages, and tools from one
 `boomfile.toml`, with drift detection and rollback — then opens portals to your code.
-Named for Kirby's **Boom Tube** — the Fourth World's instant conduit between worlds —
+Named for Kirby's **Boom Tube** — an instant conduit between worlds —
 it opens a portal to your machine's ideal state, and to your code.
 
 It began as a bash prototype (extracted from `alxjrvs/dotFiles`) and was rewritten
