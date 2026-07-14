@@ -154,7 +154,7 @@
   .bang canvas{width:11px;height:11px;display:block;position:relative;z-index:1;}
   .bang .hdot{position:relative;display:block;line-height:0;}
   /* the nav portal blooms out of the same warm fuzz the hero implodes into */
-  .bang .hrays{position:absolute;left:50%;top:50%;width:60px;height:60px;transform:translate(-50%,-50%);pointer-events:none;opacity:0;z-index:0;}
+  .bang .hrays{position:absolute;left:50%;top:50%;width:84px;height:84px;transform:translate(-50%,-50%);pointer-events:none;opacity:0;z-index:0;filter:brightness(1.65) saturate(1.1);}
   .bar-nav{display:flex;gap:22px;margin-left:18px;}
   .bar-nav a{color:var(--muted);font-size:13.5px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;}
   .bar-nav a:hover{color:var(--solar);text-decoration:none;}
@@ -897,13 +897,15 @@ if(bar&&heroWord&&cover&&logo&&!REDUCE){
       heroMk.style.opacity=(1-seg(0.32,0.44,p)).toFixed(3);}
     if(heroRays){const b=Math.sin(seg(0.24,0.46,p)*Math.PI);heroRays.style.opacity=(b*0.95).toFixed(3);
       heroRays.style.transform=`translate(-50%,-50%) scale(${(0.35+b*1.6).toFixed(3)})`;}
-    // nav portal FLASHES in with the same warm fuzz the hero implodes into, then emits BOOM
+    // nav portal: a LOUD warm-fuzz flash fires FIRST, then the portal pops out of it and emits BOOM
     const mo=1-eIO(seg(0.5,0.85,p));                  // mouth factor: 1 big+centred → 0 dot
-    const fl=Math.sin(seg(0.09,0.23,p)*Math.PI);      // flash bell as the portal pops in (~p.16)
-    logo.style.opacity=seg(0.13,0.16,p).toFixed(3);   // sharp pop-in — a flash, not a fade
-    if(headMk)headMk.style.transform=`translate(0px,${(offY*mo).toFixed(1)}px) scale(${((1+2.4*mo)*(1+0.22*fl)).toFixed(3)})`;
-    if(headRays){headRays.style.opacity=(fl*0.95).toFixed(3);   // burst rides the centred mouth
-      headRays.style.transform=`translate(-50%,-50%) translate(0px,${(offY*mo).toFixed(1)}px) scale(${(0.45+fl*1.1).toFixed(3)})`;}
+    const fl=Math.sin(seg(0.05,0.19,p)*Math.PI);      // flash bell — peaks ~p.12, ahead of the portal
+    const pp=Math.sin(seg(0.15,0.27,p)*Math.PI);      // portal pop overshoot ~p.21
+    logo.style.opacity=seg(0.04,0.08,p).toFixed(3);   // container in early so the flash can precede the portal
+    if(headMk){headMk.style.opacity=seg(0.15,0.19,p).toFixed(3);   // portal pops in AFTER the flash peak
+      headMk.style.transform=`translate(0px,${(offY*mo).toFixed(1)}px) scale(${((1+2.4*mo)*(1+0.32*pp)).toFixed(3)})`;}
+    if(headRays){headRays.style.opacity=Math.min(1,fl*1.2).toFixed(3);   // loud + bright
+      headRays.style.transform=`translate(-50%,-50%) translate(0px,${(offY*mo).toFixed(1)}px) scale(${(0.5+fl*2.0).toFixed(3)})`;}
     // nav glyphs emerge OUT (each after its own entry), OVER the portal, un-morphing into place
     headL.forEach((el,i)=>{const w=winOut(i), u=eOut(seg(w.xs,w.xe,p)), v=nVec[i];morph(el,v[0],v[1],v[2],1-u,1-u,cl(u*1.6,0,1),v[3]);});
     if(nStem){const u=eOut(seg(STEM.xs,STEM.xe,p));morph(headStem,nStem[0],nStem[1],nStem[2],1-u,1-u,cl(u*1.6,0,1),nStem[3]);}
