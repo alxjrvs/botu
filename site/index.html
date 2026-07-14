@@ -151,7 +151,10 @@
   /* nav wordmark rides OVER the portal as it emerges (hero letters stay behind their portal) */
   .logo .l1,.logo .l2,.logo .l3,.logo .l4{position:relative;z-index:2;}
   .bang .stem{width:4px;height:15px;background:var(--magenta);border-radius:1px;}
-  .bang canvas{width:11px;height:11px;display:block;}
+  .bang canvas{width:11px;height:11px;display:block;position:relative;z-index:1;}
+  .bang .hdot{position:relative;display:block;line-height:0;}
+  /* the nav portal blooms out of the same warm fuzz the hero implodes into */
+  .bang .hrays{position:absolute;left:50%;top:50%;width:60px;height:60px;transform:translate(-50%,-50%);pointer-events:none;opacity:0;z-index:0;}
   .bar-nav{display:flex;gap:22px;margin-left:18px;}
   .bar-nav a{color:var(--muted);font-size:13.5px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;}
   .bar-nav a:hover{color:var(--solar);text-decoration:none;}
@@ -396,7 +399,7 @@
 <header class="bar">
   <div class="wrap bar-in">
     <a class="brand" href="#top" aria-label="boom — home">
-      <span class="logo" aria-hidden="true"><span class="l1">B</span><span class="l2">O</span><span class="l3">O</span><span class="l4">M</span><span class="bang"><span class="stem"></span><canvas data-mark="marktrans" width="72" height="72"></canvas></span></span>
+      <span class="logo" aria-hidden="true"><span class="l1">B</span><span class="l2">O</span><span class="l3">O</span><span class="l4">M</span><span class="bang"><span class="stem"></span><span class="hdot"><canvas class="hrays" data-mark="fuzz" width="240" height="240"></canvas><canvas data-mark="marktrans" width="72" height="72"></canvas></span></span></span>
     </a>
     <nav class="bar-nav" aria-label="Primary">
       <a href="#saga">The saga</a>
@@ -419,7 +422,6 @@
       <h1 class="bigword disp" aria-label="BoomTube">
         <span class="l1" aria-hidden="true">B</span><span class="l2" aria-hidden="true">O</span><span class="l3" aria-hidden="true">O</span><span class="l4" aria-hidden="true">M</span><span class="bigbang" aria-hidden="true"><span class="stem"></span><span class="dot"><canvas class="rays" data-mark="fuzz" width="440" height="440"></canvas><canvas class="mk" data-mark="marktrans" width="620" height="620"></canvas></span></span>
       </h1>
-      <p class="bwtube" aria-hidden="true">tube</p>
     </div>
     <div class="coverfoot">
       <div class="herobody">
@@ -791,6 +793,24 @@ document.querySelectorAll("canvas[data-mark]").forEach(cv=>{
   else if(m==="fuzz")warmFuzz(x,cv.width);
 });
 
+/* ---- continuous counter-rotation: every on-screen hex portal always turns (rings
+   counter-rotate per drawHex). One rAF loop drives the canvas spin for all of them;
+   the wormhole below only drives scale/position. Culls off-screen marks; the hero
+   portal also carries its suck-throat (from scroll). Reduced-motion → static marks. ---- */
+const REDUCE=matchMedia("(prefers-reduced-motion: reduce)").matches;
+const WD=480;                                          // wormhole scroll span (shared)
+if(!REDUCE){
+  const cl2=(v,a,b)=>v<a?a:v>b?b:v;
+  const spins=[...document.querySelectorAll('canvas[data-mark="master"],canvas[data-mark="marktrans"]')].map(cv=>({
+    cv, x:cv.getContext("2d"), clip:cv.dataset.mark==="master",
+    hero:cv.classList.contains("mk")&&!!cv.closest(".bigword")}));
+  const vis=cv=>{const r=cv.getBoundingClientRect();return r.width>0.5&&r.bottom>-40&&r.top<innerHeight+40;};
+  const frame=ts=>{const spin=ts*0.0009, ht=cl2((window.scrollY/WD-0.03)/0.09,0,1);
+    for(const m of spins){if(vis(m.cv))drawHex(m.x,m.cv.width,m.clip,spin,m.hero?ht:0);}
+    requestAnimationFrame(frame);};
+  requestAnimationFrame(frame);
+}
+
 /* ---- copy install ---- */
 const copyBtn=document.getElementById("copy");
 if(copyBtn) copyBtn.addEventListener("click",async()=>{
@@ -818,23 +838,23 @@ tbtn.addEventListener("click",()=>{
    spin; they're scaled + MORPHED (stretched along the travel vector) and a dark THROAT in
    the portal occludes them as they pass in, so they hide past the hole. Intake is quick;
    the hero portal then IMPLODES and blooms a warm fuzz while it's still on-screen. The nav
-   portal blooms in bar-CENTRED as the exit mouth, then shrinks to become the "!" dot. The
-   hexes counter-rotate off p (static when parked → no idle rAF). Reduced-motion skips it
-   (CSS pins the bar open + static logo); doc pages have no .bigword and bail. */
+   portal blooms in bar-CENTRED as the exit mouth, then shrinks to become the "!" dot, and
+   blooms out of the same warm fuzz the hero implodes into. (The hex ring rotation itself is
+   the continuous spin loop above; this block only drives scale/position/opacity.) Reduced-
+   motion skips it (CSS pins the bar open + static logo); doc pages have no .bigword and bail. */
 const bar=document.querySelector("header.bar");
 const heroWord=document.querySelector(".bigword");
 const cover=document.querySelector(".cover");
 const logo=bar&&bar.querySelector(".logo");
-if(bar&&heroWord&&cover&&logo&&!matchMedia("(prefers-reduced-motion: reduce)").matches){
+if(bar&&heroWord&&cover&&logo&&!REDUCE){
   const q=(s,r)=>(r||document).querySelector(s);
   const barIn=q(".bar-in",bar);
   const heroL=[...heroWord.querySelectorAll(".l1,.l2,.l3,.l4")];
   const heroStem=q(".bigbang .stem",heroWord), heroMk=q(".dot .mk",heroWord), heroRays=q(".dot .rays",heroWord);
-  const tube=q(".bwtube",cover);
   const headL=[...logo.querySelectorAll(".l1,.l2,.l3,.l4")];
-  const headStem=q(".bang .stem",logo), headMk=q(".bang canvas",logo);
+  const headStem=q(".bang .stem",logo), headMk=q(".bang canvas[data-mark='marktrans']",logo), headRays=q(".bang .hrays",logo);
 
-  const D=480, cl=(v,a,b)=>v<a?a:v>b?b:v, seg=(a,b,t)=>cl((t-a)/(b-a),0,1);
+  const D=WD, cl=(v,a,b)=>v<a?a:v>b?b:v, seg=(a,b,t)=>cl((t-a)/(b-a),0,1);
   const eIn=t=>t*t*t, eOut=t=>1-(1-t)*(1-t)*(1-t), eIO=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
   // fast intake windows (M first) + spread emerge windows (M first), by BOOM index i (0=B..3=M).
   const winIn=i=>{const es=(3-i)*0.045;return {es,ee:es+0.12};};
@@ -855,7 +875,7 @@ if(bar&&heroWord&&cover&&logo&&!matchMedia("(prefers-reduced-motion: reduce)").m
     const dx=P[0]-cx,dy=P[1]-cy,th=Math.atan2(dy,dx),dist=Math.hypot(dx,dy)||1;
     const h=0.5*(Math.abs(r.width*Math.cos(th))+Math.abs(r.height*Math.sin(th)));   // half-extent toward the portal
     return [dx,dy,th,cl(h/dist,0,0.7)];};
-  const clr=[...heroL,...headL,heroStem,headStem,heroMk,headMk,heroRays].filter(Boolean);
+  const clr=[...heroL,...headL,heroStem,headStem,heroMk,headMk,heroRays,headRays].filter(Boolean);
   let hVec=[], nVec=[], hStem=null, nStem=null, offY=0, ticking=false;
   const measure=()=>{
     clr.forEach(el=>{el.style.transform="";el.style.opacity="";});logo.style.opacity="";headMk.style.transform="";
@@ -867,26 +887,26 @@ if(bar&&heroWord&&cover&&logo&&!matchMedia("(prefers-reduced-motion: reduce)").m
   };
   const update=()=>{
     ticking=false;
-    const p=cl(window.scrollY/D,0,1), spin=p*TAU*2.4;
+    const p=cl(window.scrollY/D,0,1);
     bar.style.setProperty("--p",seg(0,0.4,p).toFixed(3));
-    // hero glyphs funnel IN fast — morphed toward the portal; the throat hides them past the hole
+    // hero glyphs funnel IN fast — morphed toward the portal; the throat (drawn by the spin loop) hides them past the hole
     heroL.forEach((el,i)=>{const w=winIn(i), s=seg(w.es,w.ee,p), v=hVec[i];morph(el,v[0],v[1],v[2],s,eIn(s),occ(s),v[3]);});
     if(hStem){const s=seg(STEM.es,STEM.ee,p);morph(heroStem,hStem[0],hStem[1],hStem[2],s,eIn(s),occ(s),hStem[3]);}
-    if(tube)tube.style.opacity=(1-seg(0,0.18,p)).toFixed(3);
-    // hero portal: dark throat swallows the glyphs, then IMPLODE + warm fuzz (still on-screen)
-    if(heroMk){if(p<0.5)drawHex(heroMk.getContext("2d"),heroMk.width,false,spin,seg(0.03,0.12,p));
-      heroMk.style.transform=`scale(${(1-eIn(seg(0.27,0.42,p))).toFixed(3)})`;
+    // hero portal: IMPLODE + warm fuzz (still on-screen); the hex spin/throat come from the loop
+    if(heroMk){heroMk.style.transform=`scale(${(1-eIn(seg(0.27,0.42,p))).toFixed(3)})`;
       heroMk.style.opacity=(1-seg(0.32,0.44,p)).toFixed(3);}
     if(heroRays){const b=Math.sin(seg(0.24,0.46,p)*Math.PI);heroRays.style.opacity=(b*0.95).toFixed(3);
       heroRays.style.transform=`translate(-50%,-50%) scale(${(0.35+b*1.6).toFixed(3)})`;}
-    // nav portal: bloom bar-CENTRED as the exit mouth, spin, then shrink to the "!" dot
+    // nav portal: bloom bar-CENTRED as the exit mouth, then shrink to the "!" dot
     logo.style.opacity=seg(0.12,0.2,p).toFixed(3);
     const mo=1-eIO(seg(0.5,0.85,p));                  // mouth factor: 1 big+centred → 0 dot
-    if(headMk){drawHex(headMk.getContext("2d"),headMk.width,false,spin);   // no throat: nav words ride OVER the portal
-      headMk.style.transform=`translate(0px,${(offY*mo).toFixed(1)}px) scale(${(1+2.4*mo).toFixed(3)})`;}
+    if(headMk)headMk.style.transform=`translate(0px,${(offY*mo).toFixed(1)}px) scale(${(1+2.4*mo).toFixed(3)})`;
     // nav glyphs emerge OUT (each after its own entry), OVER the portal, un-morphing into place
     headL.forEach((el,i)=>{const w=winOut(i), u=eOut(seg(w.xs,w.xe,p)), v=nVec[i];morph(el,v[0],v[1],v[2],1-u,1-u,cl(u*1.6,0,1),v[3]);});
     if(nStem){const u=eOut(seg(STEM.xs,STEM.xe,p));morph(headStem,nStem[0],nStem[1],nStem[2],1-u,1-u,cl(u*1.6,0,1),nStem[3]);}
+    // the nav BOOM! blooms out of the same warm fuzz as it lands (mirrors the hero implosion)
+    if(headRays){const b=Math.sin(seg(0.72,1.0,p)*Math.PI);headRays.style.opacity=(b*0.95).toFixed(3);
+      headRays.style.transform=`translate(-50%,-50%) scale(${(0.4+b*1.3).toFixed(3)})`;}
   };
   measure();update();
   addEventListener("scroll",()=>{if(!ticking){ticking=true;requestAnimationFrame(update);}},{passive:true});
