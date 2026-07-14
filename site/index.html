@@ -121,6 +121,12 @@
   /* nav is always visible & usable; only the bar's BACKGROUND fades in with the morph (--p) */
   header.bar{--p:0;position:sticky;top:0;z-index:40;background:rgba(10,7,19,calc(var(--p)*0.92));
     border-bottom:3px solid rgba(5,4,10,var(--p));}
+  /* Ben-Day halftone on the masthead, matching the section bands. Rides the scroll-reveal
+     (--p): invisible at the top, fades in with the bar. --on inherits from :root, so the
+     dots are light on the dark bar and dark on the light-theme bar. */
+  header.bar::before{content:"";position:absolute;inset:0;pointer-events:none;z-index:0;opacity:var(--p);
+    background:radial-gradient(circle, color-mix(in srgb, var(--on) 14%, transparent) 1.4px, transparent 1.8px) 0 0/13px 13px;}
+  .bar-in{position:relative;z-index:1;}
   .bar .logo{visibility:hidden;}   /* geometry + landing anchor for the traveling hero BOOM! */
   @media(prefers-reduced-motion:reduce){header.bar{--p:1;} .bar .logo{visibility:visible;} .bigword{transform:none!important;}}
   /* light theme: the bar fills LIGHT to match the page, so a single dark nav color reads
