@@ -6,7 +6,7 @@ import type { BoomContext } from "../context.ts";
 import { displayPath, restoreFrom } from "../lib/fs.ts";
 import { cleanEnv } from "../lib/proc.ts";
 import { bandsReporter, type Reporter } from "../lib/reporter.ts";
-import { listRuns, readRun, type UndoToken } from "./journal.ts";
+import { findRunByLabel, listRuns, readRun, setRunLabel, type UndoToken } from "./journal.ts";
 import { removeManifestEntries } from "./state.ts";
 
 // One-line preview of what reversing a record would do (for --dry-run).
@@ -44,11 +44,40 @@ export async function listRollbacks(ctx: BoomContext): Promise<number> {
     for (const r of runs) {
       const side = r.sides > 0 ? `, ${r.sides} side-effect(s)` : "";
       const state = r.committed ? "" : "  (interrupted — never committed)";
-      report.ok(`${r.runId}  —  ${r.ops} op(s)${side}${state}`);
+      const tag = r.label ? `  [checkpoint: ${r.label}]` : "";
+      report.ok(`${r.runId}  —  ${r.ops} op(s)${side}${state}${tag}`);
     }
-    report.note("roll one back with: boom rollback --run-id <id>");
+    report.note("roll one back with: boom rollback --run-id <id> (or --to <checkpoint>)");
   }
   return report.finish({ ok: "history shown" });
+}
+
+// `boom checkpoint <name>` — label the most recent run as a named, prune-exempt known-good
+// state that `boom rollback --to <name>` can return to. A name already pointing at a different
+// run is refused (rather than silently moved), so a checkpoint means one fixed point in time.
+export async function checkpoint(ctx: BoomContext, name: string): Promise<number> {
+  const report = bandsReporter(ctx.process, ctx.env, "checkpoint", { setup: "MARKING A KNOWN-GOOD STATE…" });
+  const run = await readRun(ctx.env);
+  if (!run) {
+    report.fail("no run to checkpoint — sync at least once first");
+    return report.finish({ ok: "checkpoint done", fail: (f) => `checkpoint: ${f} failure(s)` });
+  }
+  const existing = await findRunByLabel(ctx.env, name);
+  if (existing && existing !== run.runId) {
+    report.fail(`checkpoint '${name}' already marks run ${existing} — pick another name`);
+    return report.finish({ ok: "checkpoint done", fail: (f) => `checkpoint: ${f} failure(s)` });
+  }
+  await setRunLabel(ctx.env, run.runId, name);
+  report.header("Checkpoint");
+  report.ok(`'${name}' → ${run.runId}`);
+  report.note(`return to it with: boom rollback --to ${name}`);
+  return report.finish({ ok: `checkpoint '${name}' set`, fail: (f) => `checkpoint: ${f} failure(s)` });
+}
+
+// Resolve a checkpoint name to its run id for `boom rollback --to <name>` (undefined if no such
+// checkpoint). Kept beside rollback so the command layer stays a thin flag-parser.
+export function resolveCheckpoint(ctx: BoomContext, name: string): Promise<string | undefined> {
+  return findRunByLabel(ctx.env, name);
 }
 
 export async function rollback(ctx: BoomContext, runId?: string, dryRun = false): Promise<number> {

@@ -4,12 +4,15 @@
 // PATH, is the agent's 1Password token in the keychain, is the state dir writable.
 // Exit code mirrors verify: 0 ok / 2 warnings / 1 failures.
 import { mkdir } from "node:fs/promises";
+import { dirname } from "node:path";
 import { NO_CONFIG_REPO_MSG, readConfigBreadcrumb, resolveConfigDir } from "../config/load.ts";
 import { detectOs } from "../config/profile.ts";
 import type { BoomContext } from "../context.ts";
+import { pathExists } from "../lib/fs.ts";
 import { remoteReachableAsync } from "../lib/git.ts";
 import { hasCommand } from "../lib/proc.ts";
-import { bandsReporter } from "../lib/reporter.ts";
+import { bandsReporter, type Reporter } from "../lib/reporter.ts";
+import { VERSION } from "../lib/version.ts";
 import { boomStateDir } from "./state.ts";
 import { validateConfigFiles } from "./validate.ts";
 
@@ -31,10 +34,42 @@ const KEYCHAIN_ITEM = "op-claude-agent";
 // `configOnly` (the `--config` flag) is the folded-in `boom validate`: parse + schema-check
 // the boomfile and overlays alone, as a read-only CI gate — no tools/keychain/state checks,
 // pass/fail 0/1 (no warning tier), and a missing config repo is a *failure*, not a warning.
-export async function doctor(ctx: BoomContext, json = false, configOnly = false): Promise<number> {
+// The boom Claude skill, checked and (under --fix) installed by doctor. Loaded lazily to sidestep
+// the commands/skill → catalog → cli → commands/doctor cycle (initialize cli.ts first, exactly as
+// engine/settings.ts documents), so reaching it from the engine can't read skillCommand in its TDZ.
+async function checkSkill(ctx: BoomContext, report: Reporter, fix: boolean): Promise<void> {
+  await import("../cli.ts");
+  const { skillDoc, skillInstallPath } = await import("../commands/skill.ts");
+  const file = skillInstallPath(ctx.env);
+  if (!file) {
+    report.skip("can't resolve the Claude config dir (HOME unset)");
+    return;
+  }
+  const doc = skillDoc(VERSION);
+  const current = (await pathExists(file)) ? await Bun.file(file).text() : undefined;
+  if (current === doc) {
+    report.ok(`boom skill installed + current (v${VERSION})`);
+    return;
+  }
+  const state = current === undefined ? "not installed" : "stale";
+  if (!fix) {
+    report.warn(`boom skill ${state} — run \`boom skill --install\` (or \`boom doctor --fix\`)`);
+    return;
+  }
+  await mkdir(dirname(file), { recursive: true });
+  await Bun.write(file, doc);
+  report.ok(`installed boom skill → ${file} (v${VERSION})`);
+}
+
+export async function doctor(
+  ctx: BoomContext,
+  json = false,
+  configOnly = false,
+  fix = false,
+): Promise<number> {
   const report = bandsReporter(ctx.process, ctx.env, "doctor", {
     json,
-    setup: "TAKING THE MACHINE'S PULSE…",
+    setup: fix ? "MENDING WHAT WE CAN…" : "TAKING THE MACHINE'S PULSE…",
   });
 
   report.header("Config");
@@ -98,11 +133,18 @@ export async function doctor(ctx: BoomContext, json = false, configOnly = false)
   report.header("State");
   const stateDir = boomStateDir(ctx.env);
   try {
+    // mkdir doubles as the fix: --fix or not, ensuring the dir is the safe, idempotent action.
     await mkdir(stateDir, { recursive: true });
-    report.ok(`state dir writable: ${stateDir}`);
+    report.ok(`state dir ${fix ? "ensured" : "writable"}: ${stateDir}`);
   } catch (e) {
     report.fail(`state dir not writable (${stateDir}): ${(e as Error).message}`);
   }
+
+  // The boom Claude skill — checked always, installed when --fix. One of the two things doctor
+  // can safely converge itself (the state dir is the other); the rest (link a config repo,
+  // provision the 1Password agent, install a missing tool) stay manual, reported above.
+  report.header("Claude skill");
+  await checkSkill(ctx, report, fix);
 
   if (json) return report.finishJson(ctx.process.stdout, true);
   return report.finish({

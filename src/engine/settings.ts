@@ -24,8 +24,10 @@ import {
   renderAgentPlist,
   unloadAgent,
 } from "../lib/launchd.ts";
+import { notify } from "../lib/notify.ts";
 import { runArgv } from "../lib/proc.ts";
 import { VERSION } from "../lib/version.ts";
+import { machineSummary, writeMachineSummary } from "./fleet.ts";
 import { displace, type UndoToken } from "./journal.ts";
 import { runWorkItems, type WorkItem } from "./registry.ts";
 import { boomStateDir } from "./state.ts";
@@ -58,7 +60,9 @@ export function isNewer(latest: string, current: string): boolean {
 
 // Any field configured? Gates the header so an absent or all-off `[boom]` table stays silent.
 function anyConfigured(s: BoomSettings): boolean {
-  return Boolean(s.skill_on_sync || s.upgrade_on_sync || (s.schedule && s.schedule.length > 0));
+  return Boolean(
+    s.skill_on_sync || s.upgrade_on_sync || (s.schedule && s.schedule.length > 0) || s.fleet || s.notify,
+  );
 }
 
 // The running boom binary — the ProgramArguments a timer invokes, and the guard against
@@ -81,7 +85,51 @@ function boomWorkItems(settings: BoomSettings): WorkItem[] {
     items.push({ label: "reap timers", run: (ctx) => reapUndeclaredTimers(settings, ctx) });
   }
   if (settings.upgrade_on_sync) items.push({ label: "upgrade", run: (ctx) => applyUpgrade(settings, ctx) });
+  if (settings.fleet) items.push({ label: "fleet", run: applyFleet });
+  // Notify runs LAST, so its drift tally also counts any drift the earlier self-wiring items
+  // surfaced (a stale skill, an unloaded timer), not just section drift.
+  if (settings.notify) items.push({ label: "notify", run: applyNotify });
   return items;
+}
+
+// Drift monitor: on a (typically scheduled) `verify` that finds drift, raise a desktop
+// notification so the signal doesn't die in a timer log. verify-only — a sync repairs drift
+// rather than reporting it, and a notification there would be noise. Best-effort: no notifier
+// on the platform is a silent no-op (see lib/notify.ts).
+function applyNotify(ctx: ReconcileCtx): void {
+  if (ctx.verb !== "verify") return;
+  const { report } = ctx;
+  const drift = report.failures + report.warnings;
+  if (drift === 0) {
+    report.skip("no drift — no notification");
+    return;
+  }
+  const host = ctx.env.BOOM_HOST ?? Bun.env.HOSTNAME ?? "this machine";
+  const fired = notify(
+    ctx.env,
+    "boom: drift detected",
+    `${host}: ${report.failures} failure(s), ${report.warnings} warning(s) — run \`boom source\``,
+  );
+  if (fired) report.ok(`notified: ${drift} drift item(s)`);
+  else report.skip("drift found but no desktop notifier available");
+}
+
+// Record this machine's summary into the config repo after a sync, so `boom fleet` can show a
+// cross-machine view (see engine/fleet.ts). Only on sync — a verify/uninstall isn't a checkpoint
+// worth recording — and only when the summary actually changed, so a repeat same-day sync leaves
+// the repo clean. The verdict is read from the run's tally at this point (post-sections).
+async function applyFleet(ctx: ReconcileCtx): Promise<void> {
+  if (ctx.verb !== "sync") return;
+  const { report } = ctx;
+  if (ctx.dryRun) {
+    report.plan("would record this machine's fleet summary");
+    return;
+  }
+  const verdict = report.failures > 0 ? "fail" : report.warnings > 0 ? "warn" : "ok";
+  const summary = machineSummary(ctx.env, verdict);
+  if (await writeMachineSummary(ctx.repo, summary))
+    report.ok(`recorded fleet summary → .boom/machines/${summary.host}.json (push to share)`);
+  else report.skip("fleet summary unchanged");
 }
 
 export async function applyBoomSettings(

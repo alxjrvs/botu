@@ -2,18 +2,26 @@
 // default), or list the runs available to roll back.
 import { buildCommand } from "@stricli/core";
 import type { BoomContext } from "../context.ts";
-import { listRollbacks, rollback } from "../engine/rollback.ts";
+import { listRollbacks, resolveCheckpoint, rollback } from "../engine/rollback.ts";
 import { str } from "./flags.ts";
 
 export const rollbackCommand = buildCommand<
-  { runId?: string; list?: boolean; dryRun?: boolean },
+  { runId?: string; to?: string; list?: boolean; dryRun?: boolean },
   [],
   BoomContext
 >({
-  docs: { brief: "Undo a previous sync (most recent run, or --run-id); --list to see them" },
+  docs: {
+    brief: "Undo a previous sync (most recent run, --run-id, or --to <checkpoint>); --list to see them",
+  },
   parameters: {
     flags: {
       runId: { kind: "parsed", parse: str, optional: true, brief: "Run id to roll back" },
+      to: {
+        kind: "parsed",
+        parse: str,
+        optional: true,
+        brief: "Roll back to a named checkpoint (see boom checkpoint)",
+      },
       list: {
         kind: "boolean",
         optional: true,
@@ -23,8 +31,21 @@ export const rollbackCommand = buildCommand<
     },
   },
   async func(flags) {
-    this.process.exitCode = flags.list
-      ? await listRollbacks(this)
-      : await rollback(this, flags.runId, flags.dryRun);
+    if (flags.list) {
+      this.process.exitCode = await listRollbacks(this);
+      return;
+    }
+    // --to resolves a checkpoint name to its run id before rolling back; an unknown name is a
+    // clean error, not a silent fall-through to "most recent run" (which could undo the wrong one).
+    let runId = flags.runId;
+    if (flags.to) {
+      runId = await resolveCheckpoint(this, flags.to);
+      if (!runId) {
+        this.process.stderr.write(`boom: no checkpoint named '${flags.to}' — see \`boom rollback --list\`\n`);
+        this.process.exitCode = 1;
+        return;
+      }
+    }
+    this.process.exitCode = await rollback(this, runId, flags.dryRun);
   },
 });
