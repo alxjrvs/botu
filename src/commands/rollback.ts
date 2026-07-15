@@ -2,7 +2,7 @@
 // default), or list the runs available to roll back.
 import { buildCommand } from "@stricli/core";
 import type { BoomContext } from "../context.ts";
-import { listRollbacks, resolveCheckpoint, rollback } from "../engine/rollback.ts";
+import { listRollbacks, rollback, rollbackTo } from "../engine/rollback.ts";
 import { str } from "./flags.ts";
 
 export const rollbackCommand = buildCommand<
@@ -35,17 +35,12 @@ export const rollbackCommand = buildCommand<
       this.process.exitCode = await listRollbacks(this);
       return;
     }
-    // --to resolves a checkpoint name to its run id before rolling back; an unknown name is a
-    // clean error, not a silent fall-through to "most recent run" (which could undo the wrong one).
-    let runId = flags.runId;
+    // --to returns to a checkpoint by reversing every run made AFTER it (rollbackTo), which is
+    // different from rolling back a single run: it's a multi-run rewind, not "undo run X".
     if (flags.to) {
-      runId = await resolveCheckpoint(this, flags.to);
-      if (!runId) {
-        this.process.stderr.write(`boom: no checkpoint named '${flags.to}' — see \`boom rollback --list\`\n`);
-        this.process.exitCode = 1;
-        return;
-      }
+      this.process.exitCode = await rollbackTo(this, flags.to, flags.dryRun);
+      return;
     }
-    this.process.exitCode = await rollback(this, runId, flags.dryRun);
+    this.process.exitCode = await rollback(this, flags.runId, flags.dryRun);
   },
 });

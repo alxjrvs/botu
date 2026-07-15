@@ -13,7 +13,7 @@
 import { writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Secret } from "../../config/schema.ts";
-import { chmod, displayPath, expandTilde, mkdir, pathExists, rm } from "../../lib/fs.ts";
+import { chmod, displayPath, expandTilde, mkdir, pathExists, rm, stat } from "../../lib/fs.ts";
 import { captureArgvAsync, hasCommand } from "../../lib/proc.ts";
 import type { ReconcileCtx } from "../types.ts";
 
@@ -73,9 +73,16 @@ export async function reconcileSecret(entry: Secret, ctx: ReconcileCtx): Promise
         return;
       }
       // Already the intended content? Skip the rewrite (and the journal churn) — the same
-      // change-gate `copy` uses, so a steady-state sync says nothing about an unchanged secret.
+      // change-gate `copy` uses. But still enforce the mode: a secret whose content is current
+      // yet whose permissions drifted looser (a prior umask, a manual chmod) must be tightened,
+      // or the 0600 guarantee is silently broken. Re-chmod without rewriting the plaintext.
       if ((await pathExists(dst)) && (await Bun.file(dst).text()) === r.value) {
-        report.skip(`${disp} already current`);
+        if (((await stat(dst)).mode & 0o777) === mode) {
+          report.skip(`${disp} already current`);
+        } else {
+          await chmod(dst, mode);
+          report.ok(`${disp} mode tightened to 0${mode.toString(8)}`);
+        }
         return;
       }
       // Journal a remove-only undo: rollback deletes the rendered secret. We deliberately do NOT
@@ -89,6 +96,13 @@ export async function reconcileSecret(entry: Secret, ctx: ReconcileCtx): Promise
     case "verify": {
       if (!(await pathExists(dst))) {
         report.warn(`${disp} secret not rendered — run: boom source`);
+        return;
+      }
+      // Mode drift is checkable without op (no network) — flag a secret that's readable by more
+      // than its owner before even looking at content freshness.
+      const curMode = (await stat(dst)).mode & 0o777;
+      if (curMode !== mode) {
+        report.warn(`${disp} mode 0${curMode.toString(8)}, expected 0${mode.toString(8)} — run: boom source`);
         return;
       }
       // Without op (missing, or offline) we can still confirm the file is present but can't check

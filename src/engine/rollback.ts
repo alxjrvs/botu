@@ -74,21 +74,13 @@ export async function checkpoint(ctx: BoomContext, name: string): Promise<number
   return report.finish({ ok: `checkpoint '${name}' set`, fail: (f) => `checkpoint: ${f} failure(s)` });
 }
 
-// Resolve a checkpoint name to its run id for `boom rollback --to <name>` (undefined if no such
-// checkpoint). Kept beside rollback so the command layer stays a thin flag-parser.
-export function resolveCheckpoint(ctx: BoomContext, name: string): Promise<string | undefined> {
-  return findRunByLabel(ctx.env, name);
-}
+// The non-undefined shape readRun returns — the unit reverseRun operates on.
+type Run = NonNullable<Awaited<ReturnType<typeof readRun>>>;
 
-export async function rollback(ctx: BoomContext, runId?: string, dryRun = false): Promise<number> {
-  const report = bandsReporter(ctx.process, ctx.env, "rollback", { setup: "REWINDING THE TIMELINE…" });
-  const run = await readRun(ctx.env, runId);
-  if (!run) {
-    report.fail(runId ? `no run ${runId} to roll back` : "no run to roll back");
-    return report.finish({ ok: "rollback done", fail: (f) => `rollback: ${f} failure(s)` });
-  }
-
-  report.header(`rollback ${run.runId}${dryRun ? " — dry run (no changes)" : ""}`);
+// Reverse one run's mutations (newest→oldest within the run), drop the manifest ownership of
+// what was actually undone, and surface the run's non-reversible side effects. Shared by a
+// single-run rollback and the multi-run `--to <checkpoint>` rewind, so both undo identically.
+async function reverseRun(ctx: BoomContext, run: Run, report: Reporter, dryRun: boolean): Promise<void> {
   const reversed: string[] = [];
   for (const rec of [...run.done].reverse()) {
     const disp = displayPath(rec.dst, ctx.env);
@@ -124,12 +116,45 @@ export async function rollback(ctx: BoomContext, runId?: string, dryRun = false)
   // Links/copies are reversed above; `run`/`hook` side effects can't be, so surface
   // them so the operator knows what state rollback did NOT restore.
   if (run.sides.length > 0) {
-    report.header("Not reversible (ran during sync)");
+    report.header(`Not reversible (ran during ${run.runId})`);
     for (const s of run.sides) report.warn(`${s.op}: ${s.label}`);
   }
+}
 
-  return report.finish({
-    ok: "rollback done",
-    fail: (f) => `rollback: ${f} failure(s)`,
-  });
+export async function rollback(ctx: BoomContext, runId?: string, dryRun = false): Promise<number> {
+  const report = bandsReporter(ctx.process, ctx.env, "rollback", { setup: "REWINDING THE TIMELINE…" });
+  const run = await readRun(ctx.env, runId);
+  if (!run) {
+    report.fail(runId ? `no run ${runId} to roll back` : "no run to roll back");
+    return report.finish({ ok: "rollback done", fail: (f) => `rollback: ${f} failure(s)` });
+  }
+  report.header(`rollback ${run.runId}${dryRun ? " — dry run (no changes)" : ""}`);
+  await reverseRun(ctx, run, report, dryRun);
+  return report.finish({ ok: "rollback done", fail: (f) => `rollback: ${f} failure(s)` });
+}
+
+// `boom rollback --to <checkpoint>` — return the machine to a checkpoint's state by reversing
+// every run made AFTER it, newest-first. The checkpoint run itself is deliberately NOT reversed
+// (that's the state we're returning to). Run ids sort chronologically, so "made after" is a
+// plain id comparison, and listRuns' newest-first order is exactly the reverse-replay order.
+// Best-effort across retained history: a post-checkpoint run whose journal was already pruned
+// is skipped (its row is gone), so keep checkpoints within the retained window to rewind fully.
+export async function rollbackTo(ctx: BoomContext, name: string, dryRun = false): Promise<number> {
+  const report = bandsReporter(ctx.process, ctx.env, "rollback", { setup: "REWINDING TO A CHECKPOINT…" });
+  const target = await findRunByLabel(ctx.env, name);
+  if (!target) {
+    report.fail(`no checkpoint named '${name}' — see \`boom rollback --list\``);
+    return report.finish({ ok: "rollback done", fail: (f) => `rollback: ${f} failure(s)` });
+  }
+  const newer = (await listRuns(ctx.env)).filter((r) => r.runId > target); // listRuns: newest first
+  report.header(`rollback to '${name}' (${target})${dryRun ? " — dry run (no changes)" : ""}`);
+  if (newer.length === 0) {
+    report.note(`already at checkpoint '${name}' — no later runs to undo`);
+    return report.finish({ ok: `at checkpoint '${name}'`, fail: (f) => `rollback: ${f} failure(s)` });
+  }
+  for (const summary of newer) {
+    const run = await readRun(ctx.env, summary.runId);
+    if (run) await reverseRun(ctx, run, report, dryRun);
+  }
+  return report.finish({ ok: `rolled back to '${name}'`, fail: (f) => `rollback: ${f} failure(s)` });
 }

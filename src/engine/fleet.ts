@@ -114,7 +114,7 @@ export async function boomFleet(ctx: BoomContext, json = false): Promise<number>
     const line = `${m.host}${here} — boom v${m.boom}, ${m.os}, synced ${m.date}`;
     if (m.verdict === "fail") report.warn(`${line} — last sync had failures`);
     else if (m.verdict === "warn") report.warn(`${line} — last sync had warnings`);
-    else if (newest && m.boom !== newest) report.warn(`${line} — behind v${newest}`);
+    else if (newest && cmpVersion(m.boom, newest) < 0) report.warn(`${line} — behind v${newest}`);
     else report.ok(line);
   }
   return finish();

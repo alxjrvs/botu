@@ -20,6 +20,7 @@ import {
 } from "../src/engine/journal.ts";
 import { boomLock, readLock, writeLock } from "../src/engine/lock.ts";
 import { reconcile } from "../src/engine/reconcile.ts";
+import { checkpoint, rollbackTo } from "../src/engine/rollback.ts";
 import { pathExists } from "../src/lib/fs.ts";
 import { notifyArgv } from "../src/lib/notify.ts";
 
@@ -162,6 +163,34 @@ test("checkpoints: a labelled run survives pruning and resolves by name", async 
   expect(runs.find((r) => r.runId === keep)?.label).toBe("known-good");
   expect(await findRunByLabel(sb.env, "known-good")).toBe(keep);
   expect(surviving.length).toBe(3); // 2 newest unlabelled + the 1 labelled
+});
+
+test("rollback --to <checkpoint> reverses runs made AFTER it, keeping the checkpoint state", async () => {
+  const sb = await sandbox('[[section]]\nname = "x"\nlink = [{ src = "a", dst = "~/.a" }]\n');
+  await writeFile(join(sb.repo, "a"), "A\n");
+  expect(await reconcile("sync", sb.ctx, {})).toBe(0); // run 1: creates ~/.a
+  expect(await pathExists(join(sb.home, ".a"))).toBe(true);
+  expect(await checkpoint(sb.ctx, "good")).toBe(0); // labels run 1
+
+  // run 2 adds ~/.b on top of the checkpoint
+  await writeFile(
+    join(sb.repo, "boomfile.toml"),
+    '[[section]]\nname = "x"\nlink = [{ src = "a", dst = "~/.a" }, { src = "b", dst = "~/.b" }]\n',
+  );
+  await writeFile(join(sb.repo, "b"), "B\n");
+  expect(await reconcile("sync", sb.ctx, {})).toBe(0);
+  expect(await pathExists(join(sb.home, ".b"))).toBe(true);
+
+  // Returning to the checkpoint undoes run 2 (~/.b) but leaves the checkpoint's own ~/.a.
+  expect(await rollbackTo(sb.ctx, "good")).toBe(0);
+  expect(await pathExists(join(sb.home, ".b"))).toBe(false);
+  expect(await pathExists(join(sb.home, ".a"))).toBe(true);
+});
+
+test("rollback --to an unknown checkpoint fails cleanly", async () => {
+  const sb = await sandbox('[[section]]\nname = "x"\n');
+  expect(await rollbackTo(sb.ctx, "nope")).toBe(1);
+  expect(sb.out()).toContain("no checkpoint named 'nope'");
 });
 
 // --- boom.lock ----------------------------------------------------------------------------

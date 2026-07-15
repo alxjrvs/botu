@@ -84,12 +84,15 @@ export async function resolveModuleSections(
 ): Promise<Section[]> {
   const out: Section[] = [];
   for (const ref of uses) {
-    const m = await resolveModule(env, repo, ref);
-    if (!m.dir) {
-      onError(ref, m.error ?? "unresolved");
-      continue;
-    }
     try {
+      // resolveModule can itself throw on a genuine filesystem error (e.g. the modules cache dir
+      // isn't writable) — catch here too, so "one bad module never sinks the reconcile" holds for
+      // an I/O failure, not just a clean clone/parse error.
+      const m = await resolveModule(env, repo, ref);
+      if (!m.dir) {
+        onError(ref, m.error ?? "unresolved");
+        continue;
+      }
       const cfg = await loadConfig(m.dir);
       out.push(...cfg.section);
     } catch (e) {
