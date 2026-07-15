@@ -66,9 +66,10 @@ test("link: default (no linkMode given) skips a foreign file at dst", async () =
   const sb = await sandbox(`[[section]]\nname = "Shell"\nlink = [{ src = ".zshrc", dst = "~/.zshrc" }]\n`);
   await writeFile(join(sb.repo, ".zshrc"), "z\n");
   await writeFile(join(sb.home, ".zshrc"), "pre-existing, not ours\n");
-  expect(await reconcile("sync", sb.ctx, {})).toBe(0);
+  expect(await reconcile("sync", sb.ctx, { verbose: true })).toBe(0);
   // Safe by default: sync leaves a file boom doesn't own in place (repair it with --fix).
   expect(await linkTarget(join(sb.home, ".zshrc"))).toBeUndefined();
+  // verbose: the "already in place / skipped" lines are quiet-suppressed by default.
   expect(sb.out()).toContain("exists but is not our symlink — skipped");
 });
 
@@ -76,7 +77,7 @@ test("link: linkMode skip leaves a foreign file at dst untouched", async () => {
   const sb = await sandbox(`[[section]]\nname = "Shell"\nlink = [{ src = ".zshrc", dst = "~/.zshrc" }]\n`);
   await writeFile(join(sb.repo, ".zshrc"), "z\n");
   await writeFile(join(sb.home, ".zshrc"), "pre-existing, not ours\n");
-  expect(await reconcile("sync", sb.ctx, { linkMode: "skip" })).toBe(0);
+  expect(await reconcile("sync", sb.ctx, { linkMode: "skip", verbose: true })).toBe(0);
   expect(await linkTarget(join(sb.home, ".zshrc"))).toBeUndefined();
   expect(await readFile(join(sb.home, ".zshrc"), "utf8")).toBe("pre-existing, not ours\n");
   expect(sb.out()).toContain("exists but is not our symlink — skipped");
@@ -99,6 +100,39 @@ test("link: overwrite mode (boom source --fix) overwrites a foreign file at dst"
   expect(await reconcile("sync", sb.ctx, { linkMode: "overwrite" })).toBe(0);
   expect(await linkTarget(join(sb.home, ".zshrc"))).toBe(join(sb.repo, ".zshrc"));
   expect(sb.out()).toContain("overwritten");
+});
+
+test("quiet by default: skips + their section header are suppressed; a change and the summary still show", async () => {
+  const sb = await sandbox(
+    `[[section]]\nname = "Quiet"\nlink = [{ src = ".keep", dst = "~/.keep" }, { src = ".foreign", dst = "~/.foreign" }]\n`,
+  );
+  await writeFile(join(sb.repo, ".keep"), "k\n");
+  await writeFile(join(sb.repo, ".foreign"), "f\n");
+  await writeFile(join(sb.home, ".foreign"), "not ours\n"); // stays foreign → a skip
+
+  // First (quiet) run: the created link shows; the foreign-file skip does not.
+  expect(await reconcile("sync", sb.ctx, {})).toBe(0);
+  const firstRun = sb.out();
+  expect(firstRun).toContain("~/.keep linked"); // a real change is always shown
+  expect(firstRun).toContain("==> Quiet"); // the section has a shown line, so its header flushes
+  expect(firstRun).not.toContain("is not our symlink"); // the skip is quiet-suppressed
+  expect(firstRun).toContain("sync done"); // the summary always shows
+
+  // Verbose re-run: now everything is in place (both are skips) — verbose surfaces the skip
+  // lines and the section header that quiet holds back.
+  const beforeVerbose = sb.out().length;
+  expect(await reconcile("sync", sb.ctx, { verbose: true })).toBe(0);
+  const verbose = sb.out().slice(beforeVerbose);
+  expect(verbose).toContain("==> Quiet");
+  expect(verbose).toContain("already linked"); // ~/.keep, now a skip
+  expect(verbose).toContain("is not our symlink"); // ~/.foreign skip, shown under verbose
+
+  // A steady-state quiet re-sync (every item a skip) emits no section headers at all.
+  const beforeSteady = sb.out().length;
+  expect(await reconcile("sync", sb.ctx, {})).toBe(0);
+  const steady = sb.out().slice(beforeSteady);
+  expect(steady).not.toContain("==>");
+  expect(steady).toContain("sync done");
 });
 
 test("verify fails (exit 1) when a link is missing", async () => {
@@ -254,7 +288,7 @@ test("mise: sync runs `mise install`; verify keys drift off `ls --missing` stdou
   const env = sb.ctx.env as Record<string, string | undefined>;
   const calls = await fakeMise(sb.repo, env);
 
-  expect(await reconcile("sync", sb.ctx, {})).toBe(0);
+  expect(await reconcile("sync", sb.ctx, { verbose: true })).toBe(0);
   expect(sb.out()).toContain("mise tools installed");
 
   // Empty `ls --missing` stdout → everything installed → verify ok (0).

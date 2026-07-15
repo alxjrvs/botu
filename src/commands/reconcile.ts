@@ -24,8 +24,15 @@ const profileFlag = {
   brief: "Activate a profile (repeatable)",
 } as const;
 const jsonFlag = { kind: "boolean", optional: true, brief: "Emit a structured JSON report" } as const;
+// Off by default: quiet output shows only what changed + what needs attention + the summary.
+// --verbose restores the per-item firehose (every ✓, every already-in-place skip).
+const verboseFlag = {
+  kind: "boolean",
+  optional: true,
+  brief: "Show every step, including already-in-place items (default: only changes + attention)",
+} as const;
 
-type VerifyFlags = { only?: string[]; json?: boolean; profile?: string[] };
+type VerifyFlags = { only?: string[]; json?: boolean; profile?: string[]; verbose?: boolean };
 type SyncFlags = {
   dryRun?: boolean;
   fix?: boolean;
@@ -36,6 +43,7 @@ type SyncFlags = {
   commit?: boolean;
   message?: string;
   update?: boolean;
+  verbose?: boolean;
 };
 
 // skip is the default — sync never clobbers a file boom doesn't own. --fix opts into
@@ -74,6 +82,7 @@ export const syncCommand = buildCommand<SyncFlags, [], BoomContext>({
       only: onlyFlag,
       profile: profileFlag,
       json: jsonFlag,
+      verbose: verboseFlag,
     },
     aliases: { m: "message" },
   },
@@ -88,6 +97,7 @@ export const syncCommand = buildCommand<SyncFlags, [], BoomContext>({
       commit: flags.commit,
       commitMessage: flags.message,
       update: flags.update,
+      verbose: flags.verbose,
     });
   },
 });
@@ -99,6 +109,7 @@ export const verifyCommand = buildCommand<VerifyFlags, [], BoomContext>({
       only: onlyFlag,
       profile: profileFlag,
       json: { kind: "boolean", optional: true, brief: "Emit a structured JSON drift report" },
+      verbose: verboseFlag,
     },
   },
   async func(flags) {
@@ -106,12 +117,13 @@ export const verifyCommand = buildCommand<VerifyFlags, [], BoomContext>({
       only: flags.only,
       json: flags.json,
       profiles: flags.profile,
+      verbose: flags.verbose,
     });
   },
 });
 
 export const uninstallCommand = buildCommand<
-  { dryRun?: boolean; json?: boolean; yes?: boolean },
+  { dryRun?: boolean; json?: boolean; yes?: boolean; verbose?: boolean },
   [],
   BoomContext
 >({
@@ -121,6 +133,7 @@ export const uninstallCommand = buildCommand<
       dryRun: { kind: "boolean", optional: true, brief: "Show what would be removed; remove nothing" },
       yes: { kind: "boolean", optional: true, brief: "Skip the confirmation prompt (for scripts/CI)" },
       json: jsonFlag,
+      verbose: verboseFlag,
     },
     aliases: { y: "yes" },
   },
@@ -140,6 +153,10 @@ export const uninstallCommand = buildCommand<
       this.process.exitCode = 1;
       return;
     }
-    this.process.exitCode = await reconcile("uninstall", this, { dryRun: flags.dryRun, json: flags.json });
+    this.process.exitCode = await reconcile("uninstall", this, {
+      dryRun: flags.dryRun,
+      json: flags.json,
+      verbose: flags.verbose,
+    });
   },
 });

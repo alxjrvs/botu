@@ -117,10 +117,10 @@ export async function reconcileLink(entry: Link, ctx: ReconcileCtx): Promise<voi
       if (t === src) {
         if (entry.mode) {
           const perms = (await stat(dst)).mode & 0o777;
-          if (perms === Number.parseInt(entry.mode, 8)) report.ok(`${disp} (mode ${entry.mode})`);
+          if (perms === Number.parseInt(entry.mode, 8)) report.skip(`${disp} (mode ${entry.mode})`);
           else report.warn(`${disp} mode ${perms.toString(8)}, expected ${entry.mode}`);
         } else {
-          report.ok(disp);
+          report.skip(disp);
         }
       } else if (t === undefined && !(await pathExists(dst))) {
         report.fail(`${disp} not linked (→ ${entry.src})`);
@@ -181,7 +181,7 @@ export async function reconcileCopy(entry: Link, ctx: ReconcileCtx): Promise<voi
       return;
     }
     case "verify": {
-      if (await filesEqual(src, dst)) report.ok(`${disp} (copy current)`);
+      if (await filesEqual(src, dst)) report.skip(`${disp} (copy current)`);
       else report.warn(`${disp} copy missing/stale`);
       return;
     }

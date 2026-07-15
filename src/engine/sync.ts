@@ -49,7 +49,7 @@ export async function syncConfigRepo(
     return;
   }
   if (!hasUpstream(repo, env)) {
-    report.ok(`pinned to ${breadcrumb.remote.ref ?? "a fixed ref"} — not tracking a moving branch`);
+    report.skip(`pinned to ${breadcrumb.remote.ref ?? "a fixed ref"} — not tracking a moving branch`);
     return;
   }
 
@@ -62,7 +62,7 @@ export async function syncConfigRepo(
     if (drift.behind > 0) report.warn(`${drift.behind} commit(s) behind origin`);
     if (drift.unpushed) report.warn("local commit(s) not pushed to origin");
     if (drift.dirty) report.warn("uncommitted local changes");
-    if (drift.behind === 0 && !drift.unpushed && !drift.dirty) report.ok("up to date with origin");
+    if (drift.behind === 0 && !drift.unpushed && !drift.dirty) report.skip("up to date with origin");
     return;
   }
 
@@ -84,7 +84,7 @@ export async function syncConfigRepo(
     return;
   }
   if (behind === 0) {
-    report.ok("up to date with origin");
+    report.skip("up to date with origin");
     return;
   }
   const before = headSha(repo, env);

@@ -29,6 +29,10 @@ export interface ReconcileOptions {
   readonly json?: boolean;
   readonly resume?: boolean;
   readonly profiles?: string[];
+  // Show every line, including the `skip` no-ops and empty-section headers quiet mode holds
+  // back (what `boom source --verbose` sets). Default false — quiet, the legible steady-state
+  // output. Independent of `json`, which suppresses all human output regardless.
+  readonly verbose?: boolean;
   // Only consulted for verb "sync": commit local config-repo changes before
   // pulling, instead of the default autostash.
   readonly commit?: boolean;
@@ -97,7 +101,13 @@ async function reapOrphans(ctx: ReconcileCtx, prior: readonly ManifestEntry[]): 
 
 export async function reconcile(verb: Verb, ctx: BoomContext, opts: ReconcileOptions): Promise<number> {
   const json = opts.json ?? false;
-  const report = new Reporter(ctx.process.stdout, ctx.process.stderr, colorEnabled(ctx.env), json);
+  const report = new Reporter(
+    ctx.process.stdout,
+    ctx.process.stderr,
+    colorEnabled(ctx.env),
+    json,
+    opts.verbose ?? false,
+  );
 
   const finish = (): number => {
     // The same structured envelope for every verb (verify carries a warning tier, mutating
@@ -200,7 +210,9 @@ export async function reconcile(verb: Verb, ctx: BoomContext, opts: ReconcileOpt
       return finish();
     }
 
-    if (dryRun) report.header(`${verb} — dry run (no changes)`);
+    // Eager: a dry run's plan lines all read "would …", but the run-level banner still states
+    // outright that nothing changed — print it even when quiet mode holds section headers back.
+    if (dryRun) report.header(`${verb} — dry run (no changes)`, true);
     const only = opts.only && opts.only.length > 0 ? new Set(opts.only) : undefined;
     for (const section of sections) {
       if (!sectionApplies(section, pc)) continue;

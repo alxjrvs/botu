@@ -32,7 +32,7 @@ export async function reconcileCheck(entry: Check, ctx: ReconcileCtx): Promise<v
         report.fail(`${label}: file missing`);
         return;
       case "pass":
-        report.ok(`${disp} absent (allowed)`);
+        report.skip(`${disp} absent (allowed)`);
         return;
       default:
         report.skip(`${disp} absent — check skipped`);
@@ -60,6 +60,6 @@ export async function reconcileCheck(entry: Check, ctx: ReconcileCtx): Promise<v
     else if (c.re.test(text)) failures.push(`forbidden /${pattern}/ present`);
   }
 
-  if (failures.length === 0) report.ok(`${disp} content ok`);
+  if (failures.length === 0) report.skip(`${disp} content ok`);
   else report.fail(`${label}: ${failures.join("; ")}`);
 }
