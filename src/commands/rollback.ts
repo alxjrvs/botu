@@ -2,18 +2,26 @@
 // default), or list the runs available to roll back.
 import { buildCommand } from "@stricli/core";
 import type { BoomContext } from "../context.ts";
-import { listRollbacks, rollback } from "../engine/rollback.ts";
+import { listRollbacks, rollback, rollbackTo } from "../engine/rollback.ts";
 import { str } from "./flags.ts";
 
 export const rollbackCommand = buildCommand<
-  { runId?: string; list?: boolean; dryRun?: boolean },
+  { runId?: string; to?: string; list?: boolean; dryRun?: boolean },
   [],
   BoomContext
 >({
-  docs: { brief: "Undo a previous sync (most recent run, or --run-id); --list to see them" },
+  docs: {
+    brief: "Undo a previous sync (most recent run, --run-id, or --to <checkpoint>); --list to see them",
+  },
   parameters: {
     flags: {
       runId: { kind: "parsed", parse: str, optional: true, brief: "Run id to roll back" },
+      to: {
+        kind: "parsed",
+        parse: str,
+        optional: true,
+        brief: "Roll back to a named checkpoint (see boom checkpoint)",
+      },
       list: {
         kind: "boolean",
         optional: true,
@@ -23,8 +31,16 @@ export const rollbackCommand = buildCommand<
     },
   },
   async func(flags) {
-    this.process.exitCode = flags.list
-      ? await listRollbacks(this)
-      : await rollback(this, flags.runId, flags.dryRun);
+    if (flags.list) {
+      this.process.exitCode = await listRollbacks(this);
+      return;
+    }
+    // --to returns to a checkpoint by reversing every run made AFTER it (rollbackTo), which is
+    // different from rolling back a single run: it's a multi-run rewind, not "undo run X".
+    if (flags.to) {
+      this.process.exitCode = await rollbackTo(this, flags.to, flags.dryRun);
+      return;
+    }
+    this.process.exitCode = await rollback(this, flags.runId, flags.dryRun);
   },
 });

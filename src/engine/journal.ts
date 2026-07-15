@@ -104,14 +104,34 @@ export class Journal {
   }
 }
 
+// Label a run as a named checkpoint (or clear it with null). Used by `boom checkpoint <name>`:
+// a labelled run survives pruning and is the target `boom rollback --to <name>` resolves.
+export async function setRunLabel(env: Env, runId: string, label: string | null): Promise<void> {
+  withDb(env, (db) => db.run("UPDATE runs SET label = ? WHERE run_id = ?", [label, runId]));
+}
+
+// Resolve a checkpoint name to its run id (or undefined). The lookup `boom rollback --to <name>`
+// and `boom checkpoint` (to detect a name already in use) go through.
+export async function findRunByLabel(env: Env, label: string): Promise<string | undefined> {
+  return withDb(env, (db) => {
+    const row = db.query("SELECT run_id FROM runs WHERE label = ?").get(label) as
+      | { run_id: string }
+      | undefined;
+    return row?.run_id;
+  });
+}
+
 // Keep the last `keep` runs; delete older runs (rows + their backup trees). Rollback only
 // ever reads the most recent run, so unbounded history is pure accumulation. Runs are
 // deleted oldest-first — run ids sort chronologically. Called after a clean commit.
 export async function pruneRuns(env: Env, keep = 10): Promise<void> {
   const stale = withDb(env, (db) => {
-    const ids = (db.query("SELECT run_id FROM runs ORDER BY run_id").all() as { run_id: string }[]).map(
-      (r) => r.run_id,
-    );
+    // Labelled runs (checkpoints) are exempt from the count bound entirely — that's the whole
+    // point of a checkpoint, a known-good state that survives however many syncs run after it.
+    // Only unlabelled history is pruned, oldest-first, down to the kept window.
+    const ids = (
+      db.query("SELECT run_id FROM runs WHERE label IS NULL ORDER BY run_id").all() as { run_id: string }[]
+    ).map((r) => r.run_id);
     // Pure count-bound (drop oldest beyond `keep`), committed or not — this bounds growth
     // even when a run fails every sync. The most-recent run (the only one `--resume` or an
     // untargeted `rollback` ever reaches) is always inside the kept window, so its backups
@@ -165,14 +185,16 @@ export interface RunSummary {
   readonly ops: number;
   readonly sides: number;
   readonly committed: boolean;
+  readonly label?: string; // a checkpoint name, when this run was labelled
 }
 
 // Enumerate the retained runs, newest first (run ids sort chronologically).
 export async function listRuns(env: Env): Promise<RunSummary[]> {
   return withDb(env, (db) => {
-    const runs = db.query("SELECT run_id, committed FROM runs ORDER BY run_id DESC").all() as {
+    const runs = db.query("SELECT run_id, committed, label FROM runs ORDER BY run_id DESC").all() as {
       run_id: string;
       committed: number;
+      label: string | null;
     }[];
     const opsN = db.query("SELECT COUNT(*) AS n FROM ops WHERE run_id = ? AND t = 'done'");
     const sidesN = db.query("SELECT COUNT(*) AS n FROM sides WHERE run_id = ?");
@@ -181,6 +203,7 @@ export async function listRuns(env: Env): Promise<RunSummary[]> {
       ops: (opsN.get(r.run_id) as { n: number }).n,
       sides: (sidesN.get(r.run_id) as { n: number }).n,
       committed: r.committed === 1,
+      ...(r.label ? { label: r.label } : {}),
     }));
   });
 }

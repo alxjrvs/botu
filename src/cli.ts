@@ -3,11 +3,18 @@
 // user command, and commands/catalog.ts derives names + briefs from it for completions,
 // the man page, and the skill. There is no hardcoded dispatch and no parallel table.
 import { buildApplication, buildRouteMap } from "@stricli/core";
+import { adoptCommand } from "./commands/adopt.ts";
+import { checkpointCommand } from "./commands/checkpoint.ts";
 import { codeRouteMap } from "./commands/code.ts";
 import { completionsCommand } from "./commands/completions.ts";
 import { doctorCommand } from "./commands/doctor.ts";
+import { editCommand } from "./commands/edit.ts";
+import { fleetCommand } from "./commands/fleet.ts";
+import { lockCommand } from "./commands/lock.ts";
 import { manCommand } from "./commands/man.ts";
 import { mcpRouteMap } from "./commands/mcp.ts";
+import { moduleCommand } from "./commands/module.ts";
+import { planCommand } from "./commands/plan.ts";
 import { uninstallCommand, verifyCommand } from "./commands/reconcile.ts";
 import { rollbackCommand } from "./commands/rollback.ts";
 import { skillCommand } from "./commands/skill.ts";
@@ -19,12 +26,19 @@ import { VERSION } from "./lib/version.ts";
 export const routes = buildRouteMap({
   routes: {
     verify: verifyCommand,
+    plan: planCommand,
     uninstall: uninstallCommand,
     source: sourceRouteMap,
     where: whereCommand,
+    edit: editCommand,
     rollback: rollbackCommand,
+    checkpoint: checkpointCommand,
     upgrade: upgradeCommand,
     doctor: doctorCommand,
+    lock: lockCommand,
+    adopt: adoptCommand,
+    fleet: fleetCommand,
+    module: moduleCommand,
     code: codeRouteMap,
     mcp: mcpRouteMap,
     completions: completionsCommand,

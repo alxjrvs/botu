@@ -23,6 +23,11 @@ export function openDb(env: Env): Database {
   // single statement. All idempotent (IF NOT EXISTS), so this is a no-op after first open.
   db.run("CREATE TABLE IF NOT EXISTS manifest (dst TEXT PRIMARY KEY, kind TEXT NOT NULL, src TEXT NOT NULL)");
   db.run("CREATE TABLE IF NOT EXISTS runs (run_id TEXT PRIMARY KEY, committed INTEGER NOT NULL DEFAULT 0)");
+  // A `label` names a run as a checkpoint (`boom checkpoint <name>`): it survives pruning and is
+  // a stable target for `boom rollback --to <name>`. Added by migration because CREATE TABLE IF
+  // NOT EXISTS never alters an existing table — a state.db from before checkpoints has the old
+  // shape, so add the column when it's missing (ALTER twice would throw on the duplicate).
+  if (!columnExists(db, "runs", "label")) db.run("ALTER TABLE runs ADD COLUMN label TEXT");
   // ops.t is 'intent' | 'done'; undo is a JSON UndoToken, present for 'done' rows.
   db.run(
     "CREATE TABLE IF NOT EXISTS ops (id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL, t TEXT NOT NULL, op TEXT NOT NULL, dst TEXT NOT NULL, undo TEXT)",
@@ -31,6 +36,13 @@ export function openDb(env: Env): Database {
     "CREATE TABLE IF NOT EXISTS sides (id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL, op TEXT NOT NULL, label TEXT NOT NULL)",
   );
   return db;
+}
+
+// Does a table already have a column? Drives the idempotent ADD COLUMN migrations above —
+// PRAGMA table_info returns one row per column, so a missing name means the migration must run.
+function columnExists(db: Database, table: string, column: string): boolean {
+  const cols = db.query(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  return cols.some((c) => c.name === column);
 }
 
 // Open, run, close — for the one-shot readers/writers (manifest, readRun, listRuns, prune).

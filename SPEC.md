@@ -100,13 +100,19 @@ ahead-of-upstream) — `boom source push` or `boom source reset` first, then re-
 
 `boomfile.toml` is a TOML document validated against a schema (`src/config/schema.ts`,
 valibot). It is grouped into `[[section]]`s; within a section, resources run in a
-fixed phase order: `link → copy → dir → pkg → osx_default → launchd → run → check → hook`.
+fixed phase order:
+`link → copy → secret → dir → pkg → osx_default → launchd → run → check → hook`.
 Resources:
 
 - `link` / `copy` `= [{ src, dst, mode?, expand? }]` — place a repo file at `dst` (symlink vs
   byte-copy). `src` may be a **glob** (then `dst` is a directory and each match is placed
   under it, structure preserved below the pattern's static prefix). `expand` (copy only)
   substitutes `${env:VAR}`/`${host}`/`${os}` in the content — per-machine files without a hook
+- `secret = [{ dst, ref? | template?, mode? }]` — render a 1Password secret to a file at sync
+  time (`op read` for a single `ref`, `op inject` for a `template` of references); `mode`
+  defaults to `0600`. The plaintext is **never journaled or backed up** (undo is a plain
+  remove), and secrets stay out of the owned-destinations manifest, so orphan reaping never
+  auto-deletes one — the op-native counterpart to `copy` + `expand`
 - `dir = [{ path, mode?, remove_on_uninstall? }]` — ensure a standalone directory exists
   (declarative `mkdir -p`/`chmod`); `remove_on_uninstall = true` removes it on uninstall *only
   if empty*
@@ -136,6 +142,12 @@ files `boomfile.<os|host|profile>.toml` are merged onto the base. `--profile`
 (repeatable) activates named profiles; os/host auto-match (overridable via
 `BOOM_OS`/`BOOM_HOST`).
 
+A top-level `use = [<module>, …]` composes other boom config repos — a git remote
+(`owner/repo[@ref]`, a URL) or a path relative to this repo — whose sections are merged in
+**before** this repo's own (so the repo can override a module). Modules resolve during
+reconcile (remotes clone into a cache; a failed resolve warns and is skipped, never fatal);
+`boom module` inspects them and `--update` re-fetches. Nesting is one level deep.
+
 ### `[boom]` — machine-global self-wiring
 
 A single top-level `[boom]` table folds boom-invoking-boom behaviors into the reconcile
@@ -153,6 +165,13 @@ verb-aware (sync installs/refreshes, verify reports drift, uninstall tears the t
   `boom <cmd>` on the interval, e.g. `{ cmd = "verify", every = "15m" }` to catch drift or
   `{ cmd = "code fetch", every = "15m" }` to keep `origin/HEAD` warm for agent worktree cuts —
   without a hand-authored plist. Removing an entry unloads its timer on the next sync.
+- `fleet = true` — after a sync, record this machine's summary (boom version, drift verdict,
+  date) into `.boom/machines/<host>.json` in the config repo, so `boom fleet` can show a
+  cross-machine view from the repo you already push. Low-churn: date-granular, written only
+  when it changed.
+- `notify = true` — when a (typically scheduled) `boom verify` finds drift, raise a desktop
+  notification (macOS `osascript` / Linux `notify-send`) so the signal doesn't die in a timer
+  log. Best-effort; a platform with no notifier is a silent no-op.
 
 ### Hooks = the resource-type extension contract
 
@@ -218,7 +237,7 @@ src/
     status.ts              boom source status (read-only drift vs origin, shared repoDrift helper)
     push.ts reset.ts       boom source push / boom source reset
     registry.ts            data-driven resource table (phase order) + finalize hooks
-    resources/             link · copy · dir · pkg · osx · launchd · run · check · hook
+    resources/             link · copy · secret · dir · pkg · osx · launchd · run · check · hook
     db.ts journal.ts state.ts   bun:sqlite store: transaction journal + manifest
     rollback.ts code.ts discovery.ts
   config/  schema.ts load.ts remote.ts profile.ts
