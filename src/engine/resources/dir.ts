@@ -19,10 +19,13 @@ export async function reconcileDir(entry: Dir, ctx: ReconcileCtx): Promise<void>
   const { report } = ctx;
   const wantMode = entry.mode ? Number.parseInt(entry.mode, 8) : undefined;
 
-  const applyMode = async (): Promise<void> => {
-    if (wantMode === undefined) return;
-    if ((await modeOf(path)) === entry.mode) return;
+  // Returns true iff it actually chmoded (corrected mode drift) — so the caller can report a
+  // corrected mode as a change (ok, shown even in quiet) and an already-correct dir as a no-op.
+  const applyMode = async (): Promise<boolean> => {
+    if (wantMode === undefined) return false;
+    if ((await modeOf(path)) === entry.mode) return false;
     await chmod(path, wantMode);
+    return true;
   };
 
   switch (ctx.verb) {
@@ -35,10 +38,10 @@ export async function reconcileDir(entry: Dir, ctx: ReconcileCtx): Promise<void>
           else report.skip(`${disp} already exists`);
           return;
         }
-        await applyMode();
-        // The directory already existed (applyMode only re-chmods on drift) — a steady-state
-        // no-op, so skip-level; the created path below is the actual change.
-        report.skip(entry.mode ? `${disp} (mode ${entry.mode})` : disp);
+        // The directory already existed. A corrected mode is a real change (shown even in
+        // quiet, like the dry-run's `would be chmod`); an already-correct dir is a no-op skip.
+        if (await applyMode()) report.ok(`${disp} (mode ${entry.mode})`);
+        else report.skip(entry.mode ? `${disp} (mode ${entry.mode})` : disp);
         return;
       }
       // A non-directory sits at the path (a file, a link). "Ensure a directory exists" can't

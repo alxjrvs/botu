@@ -4,7 +4,7 @@
 // oracle style as engine.test.ts). launchctl itself is never invoked here — the timer paths
 // are exercised via dry-run/off-platform, and the effectful primitives are darwin-only.
 import { expect, test } from "bun:test";
-import { mkdir, mkdtemp, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BoomContext } from "../src/context.ts";
@@ -81,6 +81,23 @@ test("dir: a non-directory at the path is skipped, never clobbered", async () =>
   expect(await reconcile("sync", sb.ctx, { verbose: true })).toBe(0);
   expect((await stat(join(sb.home, "thing"))).isFile()).toBe(true);
   expect(sb.out()).toContain("not a directory"); // verbose: the "skipped" line is quiet by default
+});
+
+test("dir: correcting a drifted mode is shown even in quiet; an already-correct dir is a quiet skip", async () => {
+  const sb = await sandbox(`[[section]]\nname = "d"\ndir = [{ path = "~/box", mode = "700" }]\n`);
+  await mkdir(join(sb.home, "box"), { recursive: true });
+  await chmod(join(sb.home, "box"), 0o755); // pre-existing dir with the wrong mode
+
+  // Quiet default: the chmod that corrects the mode is a real change → shown.
+  expect(await reconcile("sync", sb.ctx, {})).toBe(0);
+  expect((await stat(join(sb.home, "box"))).mode & 0o777).toBe(0o700);
+  expect(sb.out()).toContain("~/box (mode 700)");
+  expect(sb.out()).not.toContain("- ~/box"); // not the dim skip form
+
+  // Re-sync: the mode is already correct now → a quiet no-op (suppressed by default).
+  const before = sb.out().length;
+  expect(await reconcile("sync", sb.ctx, {})).toBe(0);
+  expect(sb.out().slice(before)).not.toContain("~/box");
 });
 
 // -------------------------------------------------------------------------- check (#53)
