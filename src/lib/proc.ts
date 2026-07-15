@@ -86,6 +86,54 @@ export function runArgv(args: string[], env: Env, opts?: RunOptions): ShellResul
   };
 }
 
+// Async twins of runShell/runArgv/captureArgv, backing the animated active-work spinner: a slow
+// tool (brew/mise/git/a `run` step) is spawned with `Bun.spawn` and awaited, so the event loop
+// stays free to redraw the spinner while it works — `Bun.spawnSync` would block the loop and freeze
+// the animation. Same stdio disciplines, timeout, and ShellResult shape as the sync versions; the
+// sync ones stay for the fast, non-awaited callers (defaults writes, launchctl, git plumbing).
+export async function runShellAsync(cmd: string, env: Env, opts?: RunOptions): Promise<ShellResult> {
+  const io = stdioFor(opts);
+  const proc = Bun.spawn(["sh", "-c", cmd], { env: cleanEnv(env), cwd: opts?.cwd, ...io });
+  const timeout = opts?.timeoutMs && opts.timeoutMs > 0 ? opts.timeoutMs : undefined;
+  let timedOut = false;
+  // SIGTERM on the deadline, mirroring spawnSync's `timeout`; the flag (not exitCode===null) is the
+  // truthful "did the deadline fire" signal, since any signal death also nulls the exit code.
+  const timer = timeout
+    ? setTimeout(() => {
+        timedOut = true;
+        proc.kill();
+      }, timeout)
+    : undefined;
+  const stderr = opts?.silent ? await new Response(proc.stderr as ReadableStream).text() : undefined;
+  await proc.exited;
+  if (timer) clearTimeout(timer);
+  return { code: exitOf(proc), timedOut, ...(opts?.silent ? { stderr: stderr?.trim() ?? "" } : {}) };
+}
+
+export async function runArgvAsync(args: string[], env: Env, opts?: RunOptions): Promise<ShellResult> {
+  const io = stdioFor(opts);
+  const proc = Bun.spawn(args, { env: cleanEnv(env), cwd: opts?.cwd, ...io });
+  const stderr = opts?.silent ? await new Response(proc.stderr as ReadableStream).text() : undefined;
+  await proc.exited;
+  return { code: exitOf(proc), ...(opts?.silent ? { stderr: stderr?.trim() ?? "" } : {}) };
+}
+
+export async function captureArgvAsync(args: string[], env: Env, opts?: RunOptions): Promise<CaptureResult> {
+  // Same missing-executable → {code:-1} contract as captureArgv, so an awaited git call degrades
+  // rather than crashing its caller.
+  try {
+    const proc = Bun.spawn(args, { env: cleanEnv(env), cwd: opts?.cwd, stdout: "pipe", stderr: "pipe" });
+    const [stdout, stderr] = await Promise.all([
+      new Response(proc.stdout as ReadableStream).text(),
+      new Response(proc.stderr as ReadableStream).text(),
+    ]);
+    await proc.exited;
+    return { code: exitOf(proc), stdout: stdout.trim(), stderr: stderr.trim() };
+  } catch (e) {
+    return { code: -1, stdout: "", stderr: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 // The output discipline for a spawned tool, from the run's mode: --json keeps the child's stdout
 // off the envelope channel (→ fd 2); a quiet human run silences it under the section band (stderr
 // captured for a failure message); verbose streams it live. Callers spread the result and add

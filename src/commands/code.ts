@@ -16,7 +16,7 @@ import {
   pruneFarmProject,
   resolveCodeDir,
 } from "../engine/code.ts";
-import { cleanEnv, hasCommand, runArgv } from "../lib/proc.ts";
+import { cleanEnv, hasCommand, runArgvAsync } from "../lib/proc.ts";
 import { bandsReporter } from "../lib/reporter.ts";
 import { str } from "./flags.ts";
 
@@ -154,11 +154,14 @@ const fetchCommand = buildCommand<{ dryRun?: boolean }, [], BoomContext>({
         continue;
       }
       // --quiet + --no-tags: keep the branch refs current without pulling every tag or
-      // narrating; --prune drops refs deleted upstream so stale branches don't accumulate.
-      const { code } = runArgv(["git", "fetch", "--quiet", "--prune", "--no-tags"], this.env, {
-        cwd: repo,
-        quietStdout: true,
-      });
+      // narrating; --prune drops refs deleted upstream so stale branches don't accumulate. Each
+      // repo's fetch spins under its own name, so a slow fan-out shows which repo it's on.
+      const { code } = await report.spin(rel(root, repo), () =>
+        runArgvAsync(["git", "fetch", "--quiet", "--prune", "--no-tags"], this.env, {
+          cwd: repo,
+          quietStdout: true,
+        }),
+      );
       // A failed fetch (offline, auth) is tolerated — a warm-cache courtesy, not a gate — so it's
       // a warning, not a failure; the verdict stays COMPLETE unless every repo fails (below).
       if (code === 0) report.ok(rel(root, repo));

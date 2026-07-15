@@ -10,10 +10,10 @@
 import { readConfigBreadcrumb } from "../config/load.ts";
 import {
   diffNameOnly,
-  fetchOrigin,
+  fetchOriginAsync,
   hasUpstream,
   headSha,
-  pullRebaseAutostash,
+  pullRebaseAutostashAsync,
   rebaseAbort,
   repoDrift,
   revListCount,
@@ -43,7 +43,7 @@ export async function syncConfigRepo(
   if (!breadcrumb || breadcrumb.path !== repo) return; // not a boom-managed remote config
 
   report.header("Config repo");
-  const fetch = fetchOrigin(repo, env);
+  const fetch = await report.spin("git fetch origin", () => fetchOriginAsync(repo, env));
   if (fetch.code !== 0) {
     report.warn(`could not reach ${breadcrumb.remote.url} — reconciling from the local clone as-is`);
     return;
@@ -88,7 +88,7 @@ export async function syncConfigRepo(
     return;
   }
   const before = headSha(repo, env);
-  const pull = pullRebaseAutostash(repo, env);
+  const pull = await report.spin("git pull --rebase", () => pullRebaseAutostashAsync(repo, env));
   if (pull.code !== 0) {
     rebaseAbort(repo, env); // no-op if nothing was left mid-rebase; restores any autostash
     report.fail(`pull --rebase failed — resolve manually in ${repo} (${pull.stderr || "conflict"})`);
