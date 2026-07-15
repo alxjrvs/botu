@@ -68,6 +68,10 @@ export class Reporter {
   // Bands-mode state: the section currently accumulating, and the color-cycle cursor.
   private band?: Band;
   private cycle = 0;
+  // Whether any section band or detail line has been drawn since the setup band. Gates the blank
+  // line before the verdict: with no intermediate content (e.g. `upgrade` already-latest), the
+  // verdict hugs the setup band instead of floating a blank line between them.
+  private bandsDrawn = false;
 
   constructor(
     private readonly out: Stream,
@@ -114,6 +118,7 @@ export class Reporter {
   // Render one buffered sub-line under a band (indent + colored glyph). Fail goes to stderr to
   // match the classic surface; everything else to stdout.
   private writeSub(rec: ReportRecord): void {
+    this.bandsDrawn = true;
     switch (rec.level) {
       case "ok":
         this.out.write(`  ${this.hx(COSMIC.ok, "✓")} ${rec.msg}\n`);
@@ -159,6 +164,7 @@ export class Reporter {
     if (!b) return;
     this.band = undefined;
     if (this.verbose) return; // --verbose streams the header + lines live; no trailing mark
+    this.bandsDrawn = true;
 
     const failed = this.failures > b.failAt;
     const warned = this.warnings > b.warnAt;
@@ -197,8 +203,10 @@ export class Reporter {
         ? `${w} warning(s)`
         : "all clear";
     const meta = !failed && metaOverride ? metaOverride : autoMeta;
-    // A blank line sets the verdict band off from the last section block.
-    this.out.write(`\n${this.hx(color, `▎ ${name}...${verb}!`)}  ${this.hx(COSMIC.dim, meta)}\n`);
+    // A blank line sets the verdict off from the section blocks — but only when some were drawn.
+    // With no intermediate content (e.g. `upgrade` already-latest) it hugs the setup band instead.
+    const lead = this.bandsDrawn ? "\n" : "";
+    this.out.write(`${lead}${this.hx(color, `▎ ${name}...${verb}!`)}  ${this.hx(COSMIC.dim, meta)}\n`);
     return failed ? 1 : warned ? 2 : 0;
   }
 
@@ -227,6 +235,7 @@ export class Reporter {
       };
       this.band = band;
       if (this.verbose) {
+        this.bandsDrawn = true;
         this.out.write(`\n${this.hx(color, `▎ ${s}`)}\n`);
       } else if (this.interactive) {
         // Live: the permanent bar + a krackle burst where the mark will land, on its own blank-
