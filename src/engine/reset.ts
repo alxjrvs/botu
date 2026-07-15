@@ -34,15 +34,17 @@ export async function resetConfigRepo(ctx: BoomContext, opts: ResetOptions = {})
   // Bands voice, like every `boom source` subcommand; hard failures (and an abort) return 1,
   // keeping exit-2 reserved for the verify/status warning tier. All outcome paths close through
   // finish() so the run always ends on a `▎ RESET...COMPLETE!` / `...FAILED!` verdict band.
+  // Resolve the config repo before opening the reporter, so a "no config linked" error doesn't
+  // leave a dangling setup band above requireConfigBreadcrumb's own message.
+  const breadcrumb = await requireConfigBreadcrumb(ctx);
+  if (!breadcrumb) return 1;
+  const { path, remote } = breadcrumb;
   // verbose: reset has no section band to nest under, so its plan/ok status lines print live.
   const report = bandsReporter(ctx.process, ctx.env, "reset", {
     verbose: true,
     setup: "REWINDING TO ORIGIN…",
   });
   const fin = { ok: "reset to origin", fail: (f: number) => `${f} failure(s)` };
-  const breadcrumb = await requireConfigBreadcrumb(ctx);
-  if (!breadcrumb) return 1;
-  const { path, remote } = breadcrumb;
 
   const fetch = fetchOrigin(path, ctx.env);
   if (fetch.code !== 0) {

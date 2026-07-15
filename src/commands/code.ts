@@ -99,7 +99,13 @@ const cmuxCommand = buildCommand<{ dryRun?: boolean }, [], BoomContext>({
       return;
     }
     const repos = await findRepos(root);
-    const report = bandsReporter(this.process, this.env, "code", { setup: "OPENING WORKSPACES…" });
+    // verbose (stream, no krackle): the loop spawns `cmux open` with inherited stdout while the
+    // band is open, so a dense-mode krackle line would be corrupted by the child's output when
+    // closeBand's \r rewrite fires. Streaming avoids the in-place rewrite entirely.
+    const report = bandsReporter(this.process, this.env, "code", {
+      verbose: true,
+      setup: "OPENING WORKSPACES…",
+    });
     report.header(`cmux workspaces (${root})`);
     const live = !flags.dryRun && hasCommand("cmux", this.env);
     for (const repo of repos) {

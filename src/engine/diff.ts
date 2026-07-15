@@ -8,6 +8,10 @@ import { diffHead, isClean, untrackedFiles } from "../lib/git.ts";
 import { bandsReporter } from "../lib/reporter.ts";
 
 export async function diffConfigRepo(ctx: BoomContext): Promise<number> {
+  // Resolve the config repo before opening the reporter, so a "no config linked" error doesn't
+  // leave a dangling setup band above requireConfigBreadcrumb's own message.
+  const breadcrumb = await requireConfigBreadcrumb(ctx);
+  if (!breadcrumb) return 1;
   // Reporter owns boom's status lines (one voice with push/reset); the actual diff is
   // streamed raw by diffHead so git colors + pages it exactly as a bare `git diff` would.
   // verbose: diff streams the raw `git diff` verbatim and has no section band to nest under, so
@@ -16,8 +20,6 @@ export async function diffConfigRepo(ctx: BoomContext): Promise<number> {
     verbose: true,
     setup: "SURVEYING LOCAL CHANGES…",
   });
-  const breadcrumb = await requireConfigBreadcrumb(ctx);
-  if (!breadcrumb) return 1;
   if (isClean(breadcrumb.path, ctx.env)) {
     report.ok("no local changes");
     return report.finish({ ok: "nothing to show", fail: (f) => `${f} failure(s)` });

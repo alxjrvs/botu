@@ -13,6 +13,10 @@ import { commitLocalChanges } from "./commit.ts";
 
 export async function pushConfigRepo(ctx: BoomContext, message?: string): Promise<number> {
   // One Reporter voice across the source subcommands; hard failures return 1, not 2.
+  // Resolve the config repo before opening the reporter, so a "no config linked" error doesn't
+  // leave a dangling setup band above requireConfigBreadcrumb's own message.
+  const breadcrumb = await requireConfigBreadcrumb(ctx);
+  if (!breadcrumb) return 1;
   // verbose: push streams git's own push output and has no section band to nest under, so its
   // committed/pushed status lines print live rather than buffer.
   const report = bandsReporter(ctx.process, ctx.env, "push", {
@@ -20,8 +24,6 @@ export async function pushConfigRepo(ctx: BoomContext, message?: string): Promis
     setup: "SENDING IT UPSTREAM…",
   });
   const fin = { ok: "pushed upstream", fail: (f: number) => `${f} failure(s)` };
-  const breadcrumb = await requireConfigBreadcrumb(ctx);
-  if (!breadcrumb) return 1;
 
   const commit = commitLocalChanges(breadcrumb.path, ctx.env, message);
   if (commit.kind === "failed") {
