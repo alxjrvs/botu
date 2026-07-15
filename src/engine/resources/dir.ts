@@ -36,7 +36,9 @@ export async function reconcileDir(entry: Dir, ctx: ReconcileCtx): Promise<void>
           return;
         }
         await applyMode();
-        report.ok(entry.mode ? `${disp} (mode ${entry.mode})` : disp);
+        // The directory already existed (applyMode only re-chmods on drift) — a steady-state
+        // no-op, so skip-level; the created path below is the actual change.
+        report.skip(entry.mode ? `${disp} (mode ${entry.mode})` : disp);
         return;
       }
       // A non-directory sits at the path (a file, a link). "Ensure a directory exists" can't
@@ -70,7 +72,7 @@ export async function reconcileDir(entry: Dir, ctx: ReconcileCtx): Promise<void>
       }
       if (entry.mode && (await modeOf(path)) !== entry.mode)
         report.warn(`${disp} mode ${await modeOf(path)}, expected ${entry.mode}`);
-      else report.ok(entry.mode ? `${disp} (mode ${entry.mode})` : disp);
+      else report.skip(entry.mode ? `${disp} (mode ${entry.mode})` : disp);
       return;
     }
     case "uninstall": {

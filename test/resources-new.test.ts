@@ -78,9 +78,9 @@ test("dir: verify fails when the directory is missing", async () => {
 test("dir: a non-directory at the path is skipped, never clobbered", async () => {
   const sb = await sandbox(`[[section]]\nname = "d"\ndir = [{ path = "~/thing" }]\n`);
   await writeFile(join(sb.home, "thing"), "i am a file\n");
-  expect(await reconcile("sync", sb.ctx, {})).toBe(0);
+  expect(await reconcile("sync", sb.ctx, { verbose: true })).toBe(0);
   expect((await stat(join(sb.home, "thing"))).isFile()).toBe(true);
-  expect(sb.out()).toContain("not a directory");
+  expect(sb.out()).toContain("not a directory"); // verbose: the "skipped" line is quiet by default
 });
 
 // -------------------------------------------------------------------------- check (#53)
@@ -91,8 +91,8 @@ test("check: verify passes when present matches and absent is clear; no-op on sy
   );
   await writeFile(join(sb.home, ".conf"), "helper = op-agent git-credential\n");
   expect(await reconcile("sync", sb.ctx, {})).toBe(0); // check is verify-only
-  expect(await reconcile("verify", sb.ctx, {})).toBe(0);
-  expect(sb.out()).toContain("content ok");
+  expect(await reconcile("verify", sb.ctx, { verbose: true })).toBe(0);
+  expect(sb.out()).toContain("content ok"); // verbose: a passing check is a quiet skip by default
 });
 
 test("check: a forbidden pattern fails verify with the message", async () => {
@@ -116,8 +116,8 @@ test("check: a missing required pattern fails verify", async () => {
 
 test("check: missing_file policy — skip (default), fail, pass", async () => {
   const skip = await sandbox(`[[section]]\nname = "c"\ncheck = [{ file = "~/gone", present = ["x"] }]\n`);
-  expect(await reconcile("verify", skip.ctx, {})).toBe(0);
-  expect(skip.out()).toContain("check skipped");
+  expect(await reconcile("verify", skip.ctx, { verbose: true })).toBe(0);
+  expect(skip.out()).toContain("check skipped"); // verbose: skip-level lines are quiet by default
 
   const fail = await sandbox(
     `[[section]]\nname = "c"\ncheck = [{ file = "~/gone", present = ["x"], missing_file = "fail" }]\n`,
@@ -151,8 +151,8 @@ test("launchd: non-darwin verify reports macOS-only rather than failing", async 
     BOOM_OS: "linux",
   });
   await writeFile(join(sb.repo, "agent.plist"), "<plist></plist>\n");
-  expect(await reconcile("verify", sb.ctx, {})).toBe(0);
-  expect(sb.out()).toContain("macOS-only");
+  expect(await reconcile("verify", sb.ctx, { verbose: true })).toBe(0);
+  expect(sb.out()).toContain("macOS-only"); // verbose: off-platform no-ops are quiet by default
 });
 
 // ------------------------------------------------------------------- [boom] table
@@ -163,8 +163,8 @@ test("[boom] skill_on_sync: sync installs the skill; verify reports it current",
   const skill = join(sb.home, ".claude", "skills", "boom", "SKILL.md");
   expect(await pathExists(skill)).toBe(true);
   expect(await Bun.file(skill).text()).toContain("name: boom");
-  expect(await reconcile("verify", sb.ctx, {})).toBe(0);
-  expect(sb.out()).toContain("skill current");
+  expect(await reconcile("verify", sb.ctx, { verbose: true })).toBe(0);
+  expect(sb.out()).toContain("skill current"); // verbose: "current" is a quiet skip by default
 });
 
 test("[boom] verify_schedule: dry-run plans it; off-platform reports macOS-only", async () => {
@@ -177,8 +177,8 @@ test("[boom] verify_schedule: dry-run plans it; off-platform reports macOS-only"
   const linux = await sandbox(`[boom]\ncode_fetch_schedule = "15m"\n\n[[section]]\nname = "s"\n`, {
     BOOM_OS: "linux",
   });
-  expect(await reconcile("sync", linux.ctx, {})).toBe(0);
-  expect(linux.out()).toContain("macOS-only");
+  expect(await reconcile("sync", linux.ctx, { verbose: true })).toBe(0);
+  expect(linux.out()).toContain("macOS-only"); // verbose: off-platform no-ops are quiet by default
 });
 
 test("[boom] an absent table changes nothing (no self-wiring header)", async () => {

@@ -47,7 +47,9 @@ export async function reconcileLaunchd(entry: Launchd, ctx: ReconcileCtx): Promi
       await applyLink(src, dst, disp, ctx.linkMode, ctx);
       ctx.declared.push({ kind: "link", dst, src });
       if (ctx.dryRun || !(await ours())) return; // applyLink already planned/skipped
-      if (reloadAgent(dst, ctx.env)) report.ok(`${disp} loaded`);
+      // A (re)load runs every sync to keep the agent live, so "loaded" is a steady-state
+      // confirmation, not a change — skip-level (quiet-suppressed); a failure still surfaces.
+      if (reloadAgent(dst, ctx.env)) report.skip(`${disp} loaded`);
       else report.fail(`${disp} linked but launchctl load failed`);
       return;
     }
@@ -59,7 +61,7 @@ export async function reconcileLaunchd(entry: Launchd, ctx: ReconcileCtx): Promi
       }
       const label = await labelOf(src);
       if (label && !agentLoaded(label, ctx.env)) report.warn(`${disp} linked but agent ${label} not loaded`);
-      else report.ok(label ? `${disp} (agent ${label} loaded)` : disp);
+      else report.skip(label ? `${disp} (agent ${label} loaded)` : disp);
       return;
     }
     case "uninstall": {

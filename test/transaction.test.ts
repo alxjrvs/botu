@@ -88,8 +88,8 @@ test("--resume re-applies a missing dst and skips one already correct on disk (i
   prior.close();
 
   sb.clear();
-  expect(await reconcile("sync", sb.ctx, { resume: true })).toBe(0);
-  expect(sb.out()).toContain("already linked"); // ~/.b skipped by the reality check
+  expect(await reconcile("sync", sb.ctx, { resume: true, verbose: true })).toBe(0);
+  expect(sb.out()).toContain("already linked"); // ~/.b skipped by the reality check (verbose: skips are quiet by default)
   expect(await linkTarget(join(sb.home, ".a"))).toBe(join(sb.repo, ".a")); // ~/.a re-applied
   expect(await linkTarget(join(sb.home, ".b"))).toBe(join(sb.repo, ".b")); // ~/.b intact
 });
@@ -229,8 +229,8 @@ test("copy sync is a no-op once the destination already matches the source", asy
   expect(await reconcile("sync", sb.ctx, {})).toBe(0);
 
   sb.clear();
-  expect(await reconcile("sync", sb.ctx, {})).toBe(0);
-  expect(sb.out()).toContain("already up to date");
+  expect(await reconcile("sync", sb.ctx, { verbose: true })).toBe(0);
+  expect(sb.out()).toContain("already up to date"); // verbose: the no-op skip is quiet by default
   expect(sb.out()).not.toContain("copied");
 });
 

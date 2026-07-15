@@ -29,7 +29,7 @@ export function reconcileBrewfile(file: string, ctx: ReconcileCtx): void {
         runArgv(["brew", "bundle", `--file=${path}`, ...noUpgrade], ctx.env, { quietStdout: ctx.json })
           .code === 0
       )
-        report.ok("brew bundle satisfied");
+        report.skip("brew bundle satisfied");
       else report.fail("brew bundle failed");
       return;
     }
@@ -42,7 +42,7 @@ export function reconcileBrewfile(file: string, ctx: ReconcileCtx): void {
           quietStdout: ctx.json,
         }).code === 0
       )
-        report.ok("brew bundle satisfied");
+        report.skip("brew bundle satisfied");
       else report.warn("brew bundle missing deps — run: boom source");
       return;
     }
@@ -63,7 +63,7 @@ export function reconcileMise(ctx: ReconcileCtx): void {
       // Run from the repo (cwd-independent sync), so mise resolves the repo's
       // `mise.toml` instead of whatever project tree `boom` was invoked from.
       if (runArgv(["mise", "install"], ctx.env, { quietStdout: ctx.json, cwd: ctx.repo }).code === 0)
-        report.ok("mise tools installed");
+        report.skip("mise tools installed");
       else report.fail("mise install failed");
       return;
     }
@@ -73,7 +73,7 @@ export function reconcileMise(ctx: ReconcileCtx): void {
       // and still exits 0, so the missing-tool signal is its stdout, not its code.
       // captureArgv (not a raw Bun.spawnSync) keeps the trim + throw-safety in one place.
       const r = captureArgv(["mise", "ls", "--missing"], ctx.env, { cwd: ctx.repo });
-      if (r.code === 0 && r.stdout === "") report.ok("mise tools installed");
+      if (r.code === 0 && r.stdout === "") report.skip("mise tools installed");
       else report.warn("mise tools missing — run: boom source");
       return;
     }

@@ -21,7 +21,7 @@ import { syncCommand } from "./reconcile.ts";
 // (`curl install.sh | sh && boom source set owner/repo`) and the way to re-point at a
 // different repo later. Clones + records the remote, then syncs it. `--no-sync` records
 // only. There is no local-path variant — config is always a git remote (repo-only).
-const setCommand = buildCommand<{ sync?: boolean }, [string], BoomContext>({
+const setCommand = buildCommand<{ sync?: boolean; verbose?: boolean }, [string], BoomContext>({
   docs: { brief: "Point boom at a config repo: clone, record, and sync it" },
   parameters: {
     flags: {
@@ -29,6 +29,11 @@ const setCommand = buildCommand<{ sync?: boolean }, [string], BoomContext>({
         kind: "boolean",
         optional: true,
         brief: "Reconcile immediately after cloning (default; --no-sync records only)",
+      },
+      verbose: {
+        kind: "boolean",
+        optional: true,
+        brief: "Show every step of the post-clone sync (default: only changes + attention)",
       },
     },
     positional: {
@@ -51,7 +56,8 @@ const setCommand = buildCommand<{ sync?: boolean }, [string], BoomContext>({
     }
     this.process.stdout.write(`boom: dotfiles repo cloned → ${target}\n`);
     // Sync by default; --no-sync is the record-only path (clone + record, don't reconcile).
-    if (flags.sync !== false) this.process.exitCode = await reconcile("sync", this, {});
+    if (flags.sync !== false)
+      this.process.exitCode = await reconcile("sync", this, { verbose: flags.verbose });
   },
 });
 

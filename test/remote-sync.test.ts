@@ -139,8 +139,8 @@ test("verify reports 0 drift right after linking", async () => {
   const env = { XDG_STATE_HOME: await base(), NO_COLOR: "1" };
   const repo = await linkRemoteConfigRepo(env, origin);
   const { ctx, out } = ctxFor(env, repo);
-  const rc = await reconcile("verify", ctx, {});
-  expect(out()).toContain("up to date with origin");
+  const rc = await reconcile("verify", ctx, { verbose: true });
+  expect(out()).toContain("up to date with origin"); // verbose: an in-sync repo is a quiet skip by default
   expect(rc).toBe(0);
 });
 
@@ -347,8 +347,8 @@ test("a pinned ref is reported as static, not checked for drift", async () => {
   commitAll(origin, "add y");
 
   const { ctx, out } = ctxFor(env, repo);
-  const rc = await reconcile("verify", ctx, {});
-  expect(out()).toContain("not tracking a moving branch");
+  const rc = await reconcile("verify", ctx, { verbose: true });
+  expect(out()).toContain("not tracking a moving branch"); // verbose: a pinned ref is a quiet skip by default
   expect(rc).toBe(0);
 });
 

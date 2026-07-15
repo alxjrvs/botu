@@ -113,7 +113,7 @@ async function applySkill(settings: BoomSettings, ctx: ReconcileCtx): Promise<vo
 
   if (ctx.verb === "verify") {
     const current = (await pathExists(file)) ? await Bun.file(file).text() : undefined;
-    if (current === doc) report.ok(`skill current (v${VERSION})`);
+    if (current === doc) report.skip(`skill current (v${VERSION})`);
     else report.warn(`skill ${current === undefined ? "not installed" : "stale"} — sync refreshes it`);
     return;
   }
@@ -191,7 +191,7 @@ async function applyTimer(ctx: ReconcileCtx, spec: TimerSpec): Promise<void> {
     const current = (await pathExists(plistPath)) ? await Bun.file(plistPath).text() : undefined;
     if (current !== plist) report.warn(`${spec.what} timer missing/outdated — sync installs it`);
     else if (!agentLoaded(spec.label, ctx.env)) report.warn(`${spec.what} timer installed but not loaded`);
-    else report.ok(`${spec.what} every ${spec.interval}`);
+    else report.skip(`${spec.what} every ${spec.interval}`);
     return;
   }
   // sync (non-dry)
@@ -226,7 +226,7 @@ async function applyUpgrade(settings: BoomSettings, ctx: ReconcileCtx): Promise<
     return;
   }
   if (!isNewer(latest, VERSION)) {
-    report.ok(`boom is current (v${VERSION})`);
+    report.skip(`boom is current (v${VERSION})`);
     return;
   }
   if (settings.upgrade_auto_on_sync) {

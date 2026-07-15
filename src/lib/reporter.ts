@@ -30,46 +30,89 @@ export class Reporter {
   failures = 0;
   readonly records: ReportRecord[] = [];
 
+  // Quiet mode (the default) holds a section header back until a *shown* line lands under it,
+  // so a section that produced only suppressed `skip` noise prints no header at all — the whole
+  // point of quiet output being that a steady-state run says almost nothing. Verbose writes
+  // headers eagerly and this stays undefined.
+  private pendingHeader?: string;
+
   constructor(
     private readonly out: Stream,
     private readonly err: Stream,
     private readonly color: boolean,
     private readonly json = false,
+    // Verbose shows every line (the historical firehose: each ✓/skip/note). Quiet — the CLI
+    // default — suppresses the `skip` no-ops (already-linked, unchanged, satisfied) and the
+    // headers of sections that emit only those, leaving what changed + what needs attention.
+    private readonly verbose = false,
   ) {}
 
   private c(name: ColorName, s: string): string {
     return paint(this.color, name, s);
   }
 
-  header(s: string): void {
+  // Flush a header the quiet path is holding back — called by every *shown* line so its section
+  // banner precedes it. A no-op in verbose (headers already wrote) and once already flushed.
+  private flushHeader(): void {
+    if (this.pendingHeader !== undefined) {
+      this.out.write(`\n${this.c("bold", `==> ${this.pendingHeader}`)}\n`);
+      this.pendingHeader = undefined;
+    }
+  }
+
+  // `eager` marks a run-level banner (e.g. the dry-run notice) that must print even with no
+  // lines under it — quiet holds *section* headers back, but not these.
+  header(s: string, eager = false): void {
     this.records.push({ level: "header", msg: s });
-    if (!this.json) this.out.write(`\n${this.c("bold", `==> ${s}`)}\n`);
+    if (this.json) return;
+    if (this.verbose) {
+      this.out.write(`\n${this.c("bold", `==> ${s}`)}\n`);
+      return;
+    }
+    // Quiet: stage this header. A following header with no shown line in between overwrites
+    // (and thereby discards) it — the previous section was all-skips; `eager` flushes now.
+    this.pendingHeader = s;
+    if (eager) this.flushHeader();
   }
   ok(s: string): void {
     this.records.push({ level: "ok", msg: s });
-    if (!this.json) this.out.write(`  ${this.c("green", "✓")} ${s}\n`);
+    if (this.json) return;
+    this.flushHeader();
+    this.out.write(`  ${this.c("green", "✓")} ${s}\n`);
   }
+  // A no-op: already in the desired state, nothing done. Pure noise on a steady-state run, so
+  // quiet suppresses it (records still capture it for `--json`); verbose shows the dim line.
   skip(s: string): void {
     this.records.push({ level: "skip", msg: s });
-    if (!this.json) this.out.write(`  ${this.c("dim", `- ${s}`)}\n`);
+    if (this.json || !this.verbose) return;
+    this.flushHeader();
+    this.out.write(`  ${this.c("dim", `- ${s}`)}\n`);
   }
   note(s: string): void {
     this.records.push({ level: "note", msg: s });
-    if (!this.json) this.out.write(`    ${s}\n`);
+    if (this.json) return;
+    this.flushHeader();
+    this.out.write(`    ${s}\n`);
   }
   plan(s: string): void {
     this.records.push({ level: "plan", msg: s });
-    if (!this.json) this.out.write(`  ${this.c("cyan", `~ ${s}`)}\n`);
+    if (this.json) return;
+    this.flushHeader();
+    this.out.write(`  ${this.c("cyan", `~ ${s}`)}\n`);
   }
   warn(s: string): void {
     this.warnings++;
     this.records.push({ level: "warn", msg: s });
-    if (!this.json) this.out.write(`  ${this.c("yellow", "→")} ${s}\n`);
+    if (this.json) return;
+    this.flushHeader();
+    this.out.write(`  ${this.c("yellow", "→")} ${s}\n`);
   }
   fail(s: string): void {
     this.failures++;
     this.records.push({ level: "fail", msg: s });
-    if (!this.json) this.err.write(`  ${this.c("red", "✗")} ${s}\n`);
+    if (this.json) return;
+    this.flushHeader();
+    this.err.write(`  ${this.c("red", "✗")} ${s}\n`);
   }
 
   // The one place the 0/2/1 exit contract lives: write a trailing blank line + a summary
@@ -86,6 +129,10 @@ export class Reporter {
   }): number {
     const f = this.failures;
     const w = this.warnings;
+    // Discard a section header still held back from the last (all-skips) section, so quiet
+    // mode doesn't print a stray banner right before the summary. The summary itself is an
+    // `ok`/`warn`/`fail` line and is always shown.
+    this.pendingHeader = undefined;
     this.out.write("\n");
     if (f > 0) {
       this.fail(msgs.fail ? msgs.fail(f, w) : `${f} failure(s)`);

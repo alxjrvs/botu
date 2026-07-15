@@ -67,7 +67,7 @@ export function reconcileOsxDefault(entry: OsxDefault, ctx: ReconcileCtx): void 
       // Dock/Finder/SystemUIServer even when nothing changed.
       const { ok, cur } = readCurrent();
       if (ok && osxMatches(type, cur, value)) {
-        report.ok(`${disp} = ${want} (unchanged)`);
+        report.skip(`${disp} = ${want} (unchanged)`);
         return;
       }
       const p = Bun.spawnSync(["defaults", "write", domain, key, `-${type}`, String(value)], {
@@ -85,7 +85,7 @@ export function reconcileOsxDefault(entry: OsxDefault, ctx: ReconcileCtx): void 
     }
     case "verify": {
       const { ok, cur } = readCurrent();
-      if (ok && osxMatches(type, cur, value)) report.ok(`${disp} = ${want}`);
+      if (ok && osxMatches(type, cur, value)) report.skip(`${disp} = ${want}`);
       else report.warn(`${disp} = ${cur || "<unset>"}, expected ${want}`);
       return;
     }
