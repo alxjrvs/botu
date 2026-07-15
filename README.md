@@ -45,6 +45,10 @@ managed cache dir, records a breadcrumb, and syncs it. Pass `--no-sync` to clone
 record only — to review before reconciling, or to re-point at a different repo. The
 fresh-machine one-liner is `curl install.sh | sh && boom source set owner/repo`.
 
+Starting from an already-configured machine instead? `boom adopt` reverse-engineers a
+reviewable `boomfile.toml` proposal — capturing your Homebrew/mise/apt packages and
+common dotfiles — that you turn into your config repo.
+
 ## The reconcile loop
 
 `sync` / `verify` / `uninstall` are **one verb-parameterized loop** over
@@ -53,7 +57,7 @@ separate verb: it's `boom source --fix` (sync, but overwriting conflicts).
 
 ```sh
 boom source             # make it so: symlink / copy / install / run from boomfile.toml
-boom source --dry-run   # preview every change; touch nothing
+boom plan               # preview every change as a read-only plan (--fix previews drift repair)
 boom source --fix       # repair drift: overwrite conflicting targets (skipped by default)
 boom source --update    # also update outdated brewfile formulae, not just declared state
 boom source --commit    # commit local config-repo edits before pulling
@@ -62,6 +66,7 @@ boom source --resume    # continue an interrupted sync (skips completed steps)
 boom verify             # check for drift — exit 0 ok / 2 warn / 1 fail
 boom verify --json      # …as a structured drift report
 boom rollback           # undo the most recent sync (restores backed-up files)
+boom checkpoint <name>  # name the current state; boom rollback --to <name> returns to it
 ```
 
 `sync` syncs the config repo against its remote first (`pull --rebase
@@ -88,8 +93,14 @@ boom source reset --force # …including commits no remote has (refused otherwis
 ### Housekeeping
 
 ```sh
+boom adopt              # reverse-engineer a boomfile.toml proposal from this machine
+boom edit               # open the boomfile in $EDITOR, validate on save, then push
 boom doctor --config    # parse + schema-check the boomfile; change nothing (exit 0/1)
 boom doctor             # check boom's own preconditions (tools, keychain, state)
+boom doctor --fix       # …and mend the safe ones (state dir, boom skill)
+boom lock               # pin resolved package versions to boom.lock (--check reports drift)
+boom fleet              # show every machine's last-sync summary (needs [boom] fleet)
+boom module             # list the `use` modules this config composes (--update re-fetches)
 boom where config|code|engine   # resolve where boom keeps things
 boom upgrade            # upgrade the boom binary itself
 boom completions bash|zsh|fish  # shell completions
@@ -104,56 +115,71 @@ cmd>` (it wraps the server in `op run --env-file` so secrets resolve from `op://
 
 Your dotfiles repo's config is a typed, validated TOML document, grouped into
 sections that run in phase order
-(`link → copy → glob → dir → packages → osx_default → launchd → run → check → hook`):
+(`link → copy → secret → dir → pkg → osx_default → launchd → run → check → hook`):
 
 ```toml
+# Optional: compose shared, vetted sections from other boom repos before your own
+# (a git remote, or a path relative to this repo). `boom module` inspects them.
+use = ["myorg/boom-base", "./modules/node-dev"]
+
 [[section]]
 name = "Shell + git"
 link = [
   { src = ".zshrc",     dst = "~/.zshrc" },
   { src = "ssh/config", dst = "~/.ssh/config", mode = "600" },
+  { src = "zsh/*.zsh",  dst = "~/.config/zsh/" },   # a glob src fans out into the dst dir
 ]
-glob = [{ pattern = "zsh/[0-9]*.zsh", into = "~/.config/zsh/" }]
-dir  = [{ path = "~/.ssh/cm", mode = "700" }]   # ensure a directory exists (no file to place)
+dir  = [{ path = "~/.ssh/cm", mode = "700" }]       # ensure a directory exists (no file to place)
 
 [[section]]
 name = "Packages"
-brewfile = "Brewfile"
-mise = true
+pkg = [
+  { manager = "brew", file = "Brewfile" },          # brew bundle over the Brewfile
+  { manager = "mise" },                             # mise install (reads the repo's mise config)
+]
+
+[[section]]
+name = "Secrets"
+# Render a 1Password reference to a 0600 file at sync time — never journaled in plaintext.
+secret = [{ dst = "~/.config/gh/token", ref = "op://Private/GitHub/token" }]
 
 [[section]]
 name = "macOS only"
 when = { os = "darwin" }          # gate by os / host / profile
+osx_default = [{ domain = "com.apple.dock", key = "autohide", value = true }]
 launchd = [{ src = "launchd/com.me.agent.plist" }]   # link + launchctl load -w, idempotent
-run  = [{ on = "sync", cmd = "defaults write com.apple.dock autohide -bool true" }]
 
 [[section]]
 name = "Guardrails"
 # Verify-time content assertions — legible where a grep-in-a-run would be escaping-heavy.
-check = [{ file = "~/.claude/settings.json", absent = ["osxkeychain"], message = "cached-PAT regression" }]
+check = [{ path = "~/.claude/settings.json", absent = ["osxkeychain"], message = "cached-PAT regression" }]
 
 [[section]]
-name = "Secrets"
+name = "Custom"
 hook = [{ name = "op-agent", with = { vault = "claude-agent" } }]   # → hooks/op-agent.ts
 ```
 
 Imperative escapes are `run` steps (a shell command) or a **hook** — a
 `hooks/<name>.ts` module exporting `sync`/`verify`/`uninstall` that receives a typed
 `HookApi`. That's the extension point for anything the declarative resources can't
-express. Multi-machine setups gate sections with `when`, or layer overlay files
-(`boomfile.<os|host|profile>.toml`).
+express. Multi-machine setups gate sections with `when`, layer overlay files
+(`boomfile.<os|host|profile>.toml`), or compose shared `use` modules.
 
 A top-level `[boom]` table folds boom's own self-wiring into the reconcile — refresh the
-Claude skill, nudge/auto-upgrade when a newer boom ships, and manage scheduled
-`boom verify` / `boom code fetch` launchd timers (macOS) — so you stop hand-rolling those
-as `run`/plist boilerplate:
+Claude skill, nudge/auto-upgrade when a newer boom ships, record a fleet summary,
+desktop-notify on drift, and manage scheduled `boom` launchd timers (macOS) — so you stop
+hand-rolling those as `run`/plist boilerplate:
 
 ```toml
 [boom]
-skill_on_sync         = true     # regenerate ~/.claude/skills/boom/SKILL.md each sync
-upgrade_check_on_sync = true     # warn when a newer boom release is available (offline-safe)
-verify_schedule       = "15m"    # launchd timer: boom verify every 15m (macOS-only)
-code_fetch_schedule   = "15m"    # launchd timer: git-fetch every code repo (keep origin warm)
+skill_on_sync   = true            # regenerate ~/.claude/skills/boom/SKILL.md each sync
+upgrade_on_sync = "check"         # "check" warns on a newer release; "auto" self-upgrades
+fleet           = true            # record this machine's summary into the repo for `boom fleet`
+notify          = true            # desktop-notify when a scheduled `boom verify` finds drift
+schedule = [
+  { cmd = "verify",     every = "15m" },   # launchd timer: boom verify every 15m (macOS)
+  { cmd = "code fetch", every = "15m" },   # keep every code repo's origin warm for agents
+]
 ```
 
 ## Code portals
