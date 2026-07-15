@@ -160,10 +160,12 @@ async function runUpgrade(flags: UpgradeFlags, report: Reporter, env: Env): Prom
   let bin: Uint8Array;
   let sums: string;
   try {
-    [bin, sums] = await Promise.all([
-      fetchBytes(`${base}/${asset}`),
-      fetchBytes(`${base}/SHA256SUMS`).then((b) => new TextDecoder().decode(b)),
-    ]);
+    [bin, sums] = await report.spin("downloading", () =>
+      Promise.all([
+        fetchBytes(`${base}/${asset}`),
+        fetchBytes(`${base}/SHA256SUMS`).then((b) => new TextDecoder().decode(b)),
+      ]),
+    );
   } catch (err) {
     report.fail((err as Error).message);
     return;

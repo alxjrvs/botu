@@ -49,6 +49,17 @@ export const RECONCILE_CATEGORY_ORDER = [
   "ORPHANS",
 ] as const;
 
+// The active-work spinner's frames — a pulsing Kirby-krackle burst (grows and shrinks, spins),
+// on-brand where a plain dot-spinner would read as generic. Redrawn in place while a slow tool
+// (brew/mise/git/a `run` step) works, then erased when it resolves to the band's ✓/! mark.
+const SPIN_FRAMES = ["✶", "✷", "✸", "✹", "✺", "✹", "✸", "✷"] as const;
+
+// Elapsed-time suffix on the verdict's meta line: sub-second in ms, else one-decimal seconds.
+// Whole-command wall time, measured from Reporter construction.
+export function fmtElapsed(ms: number): string {
+  return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`;
+}
+
 // Version of the `--json` report envelope. Bump when its shape changes so a script consuming
 // `verify --json` / `doctor --json` / etc. can detect (and refuse) an unknown shape. v2 added
 // the per-record `category` field.
@@ -97,9 +108,11 @@ export class Reporter {
   // Bands-mode state: the section currently accumulating, and the color-cycle cursor.
   private band?: Band;
   private cycle = 0;
-  // Category mode: a transient live line (`▎ Section...✸`) is on screen (interactive only) and
-  // must be erased before the grouped summary renders at finish.
-  private liveShown = false;
+  // Active-work spinner: the interval redrawing the krackle while an awaited tool runs. Live only
+  // between spin() start and stop; the spun line is erased on stop, so it never persists.
+  private spinTimer?: ReturnType<typeof setInterval>;
+  // Wall-clock start, for the verdict's elapsed suffix — every command's Reporter times itself.
+  private readonly startedAt = performance.now();
   // Whether any section band or detail line has been drawn since the setup band. Gates the blank
   // line before the verdict: with no intermediate content (e.g. `upgrade` already-latest), the
   // verdict hugs the setup band instead of floating a blank line between them.
@@ -149,6 +162,32 @@ export class Reporter {
   setup(msg: string): void {
     if (this.json || !this.bands) return;
     this.out.write(`\n${this.hx(COSMIC.dim, `▎ ${msg}`)}\n`);
+  }
+
+  // Run an awaited slow operation under the animated active-work spinner: an in-place krackle line
+  // (`  ✸ <label>…`) that pulses while `work` runs, erased when it resolves. The animation is
+  // interactive-only — under --verbose the tool's own streamed output is the progress signal, and
+  // in JSON / piped / CI runs the line is suppressed (no TTY to animate, no cursor to rewind). So
+  // spinning is transparent: it only ever adds a transient line to a live terminal, never to
+  // captured output. Always awaits `work` and always clears the timer, even if it throws.
+  async spin<T>(label: string, work: () => Promise<T>): Promise<T> {
+    if (this.json || this.verbose || !this.interactive) return work();
+    let i = 0;
+    const draw = (): void => {
+      const frame = SPIN_FRAMES[i++ % SPIN_FRAMES.length] ?? "✸";
+      this.out.write(`\r\x1b[K  ${this.hx(COSMIC.solar, frame)} ${this.hx(COSMIC.dim, `${label}…`)}`);
+    };
+    draw();
+    this.spinTimer = setInterval(draw, 90);
+    try {
+      return await work();
+    } finally {
+      if (this.spinTimer) {
+        clearInterval(this.spinTimer);
+        this.spinTimer = undefined;
+      }
+      this.out.write("\r\x1b[K"); // erase the spinner line; the resolved band/detail prints next
+    }
   }
 
   // Render one buffered sub-line under a band (indent + colored glyph). Fail goes to stderr to
@@ -241,8 +280,13 @@ export class Reporter {
     const meta = !failed && metaOverride ? metaOverride : autoMeta;
     // A blank line sets the verdict off from the section blocks — but only when some were drawn.
     // With no intermediate content (e.g. `upgrade` already-latest) it hugs the setup band instead.
+    // The outcome + elapsed are a grey sub-line beneath the band, matching the category verdict, so
+    // every command's close reads the same.
     const lead = this.bandsDrawn ? "\n" : "";
-    this.out.write(`${lead}${this.hx(color, `▎ ${name}...${verb}!`)}  ${this.hx(COSMIC.dim, meta)}\n`);
+    this.out.write(`${lead}${this.hx(color, `▎ ${name}...${verb}!`)}\n`);
+    this.out.write(
+      `   ${this.hx(COSMIC.dim, `${meta} · ${fmtElapsed(performance.now() - this.startedAt)}`)}\n`,
+    );
     return failed ? 1 : warned ? 2 : 0;
   }
 
@@ -289,7 +333,7 @@ export class Reporter {
   // The category-mode verdict: the COMMAND...COMPLETE! / …FAILED! band, then its outcome as a
   // dim sub-line *beneath* it (the count of categories touched / drift, plus elapsed time) —
   // rather than trailing the band. Reads the tally only, so the 0/2/1 ladder matches every path.
-  private categoryVerdict(hasWarnTier: boolean, touched: number, timecode?: string): number {
+  private categoryVerdict(hasWarnTier: boolean, touched: number): number {
     const f = this.failures;
     const w = this.warnings;
     const name = (this.command ?? "").toUpperCase();
@@ -306,7 +350,7 @@ export class Reporter {
         touched === 0
           ? "nothing to change"
           : `${touched} categor${touched === 1 ? "y" : "ies"} touched · all clear`;
-    if (timecode) meta += ` · ${timecode}`;
+    meta += ` · ${fmtElapsed(performance.now() - this.startedAt)}`;
     // The verdict floats one blank line below the section blocks (when any drew); with nothing
     // between it hugs the setup band. The meta is its own indented line under the band.
     const lead = this.bandsDrawn ? "\n" : "";
@@ -323,17 +367,14 @@ export class Reporter {
     this.records.push({ level: "header", msg: s, category: this.category });
     if (this.json) return;
     if (this.categoryMode && !this.verbose) {
-      // Category mode buffers everything and draws grouped bands at finish, so a section header
-      // is not a persistent line here. An eager banner (the dry-run notice) still prints — as grey
-      // sub-text of the setup band above it (indented, no bar), matching the verdict's meta line —
-      // and on an interactive TTY a transient live line names the running section, erased before
-      // the summary.
+      // Category mode buffers everything and draws grouped bands at finish, so a section header is
+      // not a persistent line here. An eager banner (the dry-run notice) still prints — as grey
+      // sub-text of the setup band above it (indented, no bar), matching the verdict's meta line.
+      // Section progress itself needs no live line: fast sections flash by, and the slow work
+      // (brew/mise/git) surfaces its own active-work spinner via report.spin().
       if (eager) {
         this.out.write(`   ${this.hx(COSMIC.dim, s)}\n`);
         this.bandsDrawn = true;
-      } else if (this.interactive) {
-        this.out.write(`\r\x1b[K${this.hx(COSMIC.dim, `▎ ${s}...`)}${this.hx(COSMIC.solar, "✸")}`);
-        this.liveShown = true;
       }
       return;
     }
@@ -467,9 +508,6 @@ export class Reporter {
     // Bands mode only: the verdict band's outcome text on success (e.g. "v0.14.0 → v0.15.0"),
     // in place of the auto-generated count. Ignored on the classic surface and on failure.
     meta?: string;
-    // Category mode only: the elapsed-time suffix on the verdict's meta sub-line (e.g. "1.9s"),
-    // measured by the caller. Ignored elsewhere.
-    timecode?: string;
   }): number {
     const f = this.failures;
     const w = this.warnings;
@@ -477,15 +515,11 @@ export class Reporter {
     // mode doesn't print a stray banner right before the summary. The summary itself is an
     // `ok`/`warn`/`fail` line and is always shown.
     this.pendingHeader = undefined;
-    // Category mode (dense reconcile default): erase any live section line, draw the grouped
-    // category bands from the buffered records, then the two-line verdict block.
+    // Category mode (dense reconcile default): draw the grouped category bands from the buffered
+    // records, then the two-line verdict block.
     if (this.categoryMode && !this.verbose && !this.json) {
-      if (this.liveShown) {
-        this.out.write("\r\x1b[K");
-        this.liveShown = false;
-      }
       const touched = this.renderCategorySummary();
-      return this.categoryVerdict(msgs.warn !== undefined, touched, msgs.timecode);
+      return this.categoryVerdict(msgs.warn !== undefined, touched);
     }
     // Bands mode: resolve the last section band, then draw the verdict band in place of the
     // classic summary. `msgs.warn` presence marks a warning-tier command (verify), same as below.

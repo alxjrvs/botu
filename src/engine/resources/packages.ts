@@ -5,7 +5,7 @@
 import { join } from "node:path";
 import { detectOs } from "../../config/profile.ts";
 import type { Pkg } from "../../config/schema.ts";
-import { captureArgv, hasCommand, lastLine, runArgv, toolIo } from "../../lib/proc.ts";
+import { captureArgv, hasCommand, lastLine, runArgvAsync, toolIo } from "../../lib/proc.ts";
 import type { ReconcileCtx } from "../types.ts";
 
 export async function reconcilePkg(entry: Pkg, ctx: ReconcileCtx): Promise<void> {
@@ -21,7 +21,7 @@ export async function reconcilePkg(entry: Pkg, ctx: ReconcileCtx): Promise<void>
   }
 }
 
-function reconcileBrew(file: string, ctx: ReconcileCtx): void {
+async function reconcileBrew(file: string, ctx: ReconcileCtx): Promise<void> {
   const { report } = ctx;
   if (!hasCommand("brew", ctx.env)) {
     report.fail("brew not installed");
@@ -42,10 +42,12 @@ function reconcileBrew(file: string, ctx: ReconcileCtx): void {
         return;
       }
       {
-        const r = runArgv(
-          ["brew", "bundle", `--file=${path}`, ...noUpgrade],
-          ctx.env,
-          toolIo(ctx.json, ctx.verbose),
+        const r = await report.spin("brew bundle", () =>
+          runArgvAsync(
+            ["brew", "bundle", `--file=${path}`, ...noUpgrade],
+            ctx.env,
+            toolIo(ctx.json, ctx.verbose),
+          ),
         );
         if (r.code === 0) report.skip("brew bundle satisfied");
         else report.fail(`brew bundle failed${lastLine(r.stderr) ? `: ${lastLine(r.stderr)}` : ""}`);
@@ -56,14 +58,14 @@ function reconcileBrew(file: string, ctx: ReconcileCtx): void {
       // Mirrors sync's --no-upgrade gate: otherwise a plain `verify` would flag
       // merely-outdated (but still declared) formulae as drift that `boom source` then
       // won't reconcile, since sync itself no longer upgrades by default.
-      if (
-        runArgv(
+      const check = await report.spin("brew bundle check", () =>
+        runArgvAsync(
           ["brew", "bundle", "check", `--file=${path}`, ...noUpgrade],
           ctx.env,
           toolIo(ctx.json, ctx.verbose),
-        ).code === 0
-      )
-        report.skip("brew bundle satisfied");
+        ),
+      );
+      if (check.code === 0) report.skip("brew bundle satisfied");
       else report.warn("brew bundle missing deps — run: boom source");
       return;
     }
@@ -72,7 +74,7 @@ function reconcileBrew(file: string, ctx: ReconcileCtx): void {
   }
 }
 
-function reconcileMise(ctx: ReconcileCtx): void {
+async function reconcileMise(ctx: ReconcileCtx): Promise<void> {
   const { report } = ctx;
   if (!hasCommand("mise", ctx.env)) return;
   switch (ctx.verb) {
@@ -84,10 +86,9 @@ function reconcileMise(ctx: ReconcileCtx): void {
       // Run from the repo (cwd-independent sync), so mise resolves the repo's `mise.toml`
       // instead of whatever project tree `boom` was invoked from.
       {
-        const r = runArgv(["mise", "install"], ctx.env, {
-          ...toolIo(ctx.json, ctx.verbose),
-          cwd: ctx.repo,
-        });
+        const r = await report.spin("mise install", () =>
+          runArgvAsync(["mise", "install"], ctx.env, { ...toolIo(ctx.json, ctx.verbose), cwd: ctx.repo }),
+        );
         if (r.code === 0) report.skip("mise tools installed");
         else report.fail(`mise install failed${lastLine(r.stderr) ? `: ${lastLine(r.stderr)}` : ""}`);
       }
@@ -173,7 +174,9 @@ async function reconcileLinuxPkgs(
         return;
       }
       {
-        const r = runArgv([...install, ...packages], ctx.env, toolIo(ctx.json, ctx.verbose));
+        const r = await report.spin(`${mgr} install`, () =>
+          runArgvAsync([...install, ...packages], ctx.env, toolIo(ctx.json, ctx.verbose)),
+        );
         if (r.code === 0) report.skip(`${mgr}: ${packages.length} package(s) satisfied`);
         else report.fail(`${mgr} install failed${lastLine(r.stderr) ? `: ${lastLine(r.stderr)}` : ""}`);
       }

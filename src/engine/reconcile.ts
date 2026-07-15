@@ -31,12 +31,6 @@ const SETUP_COPY: Record<Verb, string> = {
   uninstall: "UNMAKING WHAT WAS MADE…",
 };
 
-// Elapsed-time suffix for the verdict's meta sub-line: sub-second in ms, else one-decimal
-// seconds. Whole-run wall time (config sync + sections + self-wiring), measured by reconcile.
-function fmtElapsed(ms: number): string {
-  return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`;
-}
-
 export interface ReconcileOptions {
   readonly only?: string[];
   readonly dryRun?: boolean;
@@ -143,24 +137,20 @@ export async function reconcile(verb: Verb, ctx: BoomContext, opts: ReconcileOpt
   // Every line until a section resource (or a later phase) sets its own category lands under
   // CONFIG — including the config-repo sync below and any early bail-out failure.
   report.category = "CONFIG";
-  const started = performance.now();
 
   const finish = (): number => {
     // The same structured envelope for every verb (verify carries a warning tier, mutating
     // verbs are 0/1), shared with doctor/validate via Reporter.finishJson.
     if (json) return report.finishJson(ctx.process.stdout, verb === "verify");
-    // Human output: the shared Reporter epilogue owns the blank line + 0/2/1 mapping.
-    // verify has a warning tier; the mutating verbs (sync/uninstall) do not. The timecode is the
-    // category-mode verdict's elapsed suffix (ignored on the verbose/classic paths).
-    const timecode = fmtElapsed(performance.now() - started);
+    // Human output: the shared Reporter epilogue owns the blank line + 0/2/1 mapping + elapsed.
+    // verify has a warning tier; the mutating verbs (sync/uninstall) do not.
     return verb === "verify"
       ? report.finish({
           ok: "verify: all checks passed",
           warn: (w) => `verify: ${w} warning(s)`,
           fail: (f, w) => `verify: ${f} failure(s), ${w} warning(s)`,
-          timecode,
         })
-      : report.finish({ ok: `${verb} done`, fail: (f) => `${verb}: ${f} failure(s)`, timecode });
+      : report.finish({ ok: `${verb} done`, fail: (f) => `${verb}: ${f} failure(s)` });
   };
 
   const repo = await resolveConfigDir(ctx.env, ctx.cwd);
