@@ -4,6 +4,7 @@
 // resumable, and persists the manifest of owned destinations.
 import { join } from "node:path";
 import { loadConfig, loadOptionalConfigFile, NO_CONFIG_REPO_MSG, resolveConfigDir } from "../config/load.ts";
+import { resolveModuleSections } from "../config/modules.ts";
 import { overlayFiles, profileContext, sectionApplies } from "../config/profile.ts";
 import type { Boomfile, Section } from "../config/schema.ts";
 import type { BoomContext } from "../context.ts";
@@ -228,10 +229,18 @@ export async function reconcile(verb: Verb, ctx: BoomContext, opts: ReconcileOpt
       dirty: new Set<string>(),
     };
 
-    // Merge overlay files (boomfile.<os|host|profile>.toml) onto the base, then gate
-    // each section by its `when` (host/OS/profile) and the --only filter.
+    // Compose `use` modules (shared config repos) BEFORE this repo's own sections, so the repo
+    // can override a module. A module that won't resolve (offline, typo, invalid) is warned and
+    // skipped — one bad module never sinks the reconcile. Merge overlay files
+    // (boomfile.<os|host|profile>.toml) onto the base afterwards, then gate each section by its
+    // `when` (host/OS/profile) and the --only filter.
     const pc = profileContext(ctx.env, opts.profiles ?? []);
-    const sections: Section[] = [...config.section];
+    const moduleSections = config.use
+      ? await resolveModuleSections(ctx.env, repo, config.use, (ref, why) =>
+          report.warn(`module ${ref}: ${why} — skipped`),
+        )
+      : [];
+    const sections: Section[] = [...moduleSections, ...config.section];
     try {
       for (const name of overlayFiles(pc)) {
         const overlay = await loadOptionalConfigFile(join(repo, name));

@@ -8,10 +8,12 @@ import { checkpointCommand } from "./commands/checkpoint.ts";
 import { codeRouteMap } from "./commands/code.ts";
 import { completionsCommand } from "./commands/completions.ts";
 import { doctorCommand } from "./commands/doctor.ts";
+import { editCommand } from "./commands/edit.ts";
 import { fleetCommand } from "./commands/fleet.ts";
 import { lockCommand } from "./commands/lock.ts";
 import { manCommand } from "./commands/man.ts";
 import { mcpRouteMap } from "./commands/mcp.ts";
+import { moduleCommand } from "./commands/module.ts";
 import { planCommand } from "./commands/plan.ts";
 import { uninstallCommand, verifyCommand } from "./commands/reconcile.ts";
 import { rollbackCommand } from "./commands/rollback.ts";
@@ -28,6 +30,7 @@ export const routes = buildRouteMap({
     uninstall: uninstallCommand,
     source: sourceRouteMap,
     where: whereCommand,
+    edit: editCommand,
     rollback: rollbackCommand,
     checkpoint: checkpointCommand,
     upgrade: upgradeCommand,
@@ -35,6 +38,7 @@ export const routes = buildRouteMap({
     lock: lockCommand,
     adopt: adoptCommand,
     fleet: fleetCommand,
+    module: moduleCommand,
     code: codeRouteMap,
     mcp: mcpRouteMap,
     completions: completionsCommand,

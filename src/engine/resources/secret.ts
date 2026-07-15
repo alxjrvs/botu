@@ -58,12 +58,13 @@ export async function reconcileSecret(entry: Secret, ctx: ReconcileCtx): Promise
 
   switch (ctx.verb) {
     case "sync": {
-      if (!hasCommand("op", ctx.env)) {
-        report.fail(`${disp} — op (1Password CLI) not installed, can't render secret`);
-        return;
-      }
+      // A dry-run plan states intent without touching 1Password, so it never needs `op` present.
       if (ctx.dryRun) {
         report.plan(`${disp} would be rendered from ${entry.ref ?? entry.template}`);
+        return;
+      }
+      if (!hasCommand("op", ctx.env)) {
+        report.fail(`${disp} — op (1Password CLI) not installed, can't render secret`);
         return;
       }
       const r = await render(entry, ctx);
