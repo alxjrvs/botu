@@ -19,6 +19,10 @@ import { resolve } from "node:path";
 const SITE = import.meta.dir; // .../site
 const ROOT = resolve(SITE, ".."); // repo root
 
+// Version for the header pill — read from package.json so generated doc pages stay in
+// lockstep with the release (the hand-authored landing hardcodes the same pill).
+const VERSION = (JSON.parse(readFileSync(resolve(ROOT, "package.json"), "utf8")) as { version: string }).version;
+
 // --- lift the shared chrome out of the landing page (single source of truth) ---
 const index = readFileSync(resolve(SITE, "index.html"), "utf8");
 const grab = (re: RegExp, what: string): string => {
@@ -96,6 +100,7 @@ const masthead = (active: string): string => `<header class="bar">
       <a href="https://github.com/alxjrvs/boom">GitHub</a>
     </nav>
     <div class="bar-sp"></div>
+    <span class="bar-ver" aria-label="Version ${VERSION}">v${VERSION}</span>
     <button class="toggle" id="theme" type="button" aria-pressed="false">Light</button>
   </div>
 </header>`;
